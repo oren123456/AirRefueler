@@ -1,0 +1,25 @@
+import unreal
+log = lambda *a: unreal.log("[Clouds2] " + " ".join(str(x) for x in a))
+# UE 5.8 regression UE-388294: clouds composited at low res -> blocky edges around meshes. Restore 5.7 behaviour.
+unreal.SystemLibrary.execute_console_command(None, "r.VolumetricCloud.ApplyFogLate 0")
+mel = unreal.MaterialEditingLibrary
+mi = unreal.load_asset("/Game/AirRefueler/Maps/MI_VolumetricCloud_Refuel")
+mel.set_material_instance_scalar_parameter_value(mi, "Cloud_GlobalCoverage", -0.15)
+mel.set_material_instance_scalar_parameter_value(mi, "Cloud_GlobalDensity", 0.010)
+mel.set_material_instance_scalar_parameter_value(mi, "Layout_CloudGlobalScale", 220.0)
+mel.update_material_instance(mi)
+unreal.EditorAssetLibrary.save_loaded_asset(mi)
+eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+sky = next(a for a in eas.get_all_level_actors() if isinstance(a, unreal.SkyAtmosphere)).get_component_by_class(unreal.SkyAtmosphereComponent)
+sky.modify()
+sky.set_editor_property("aerial_pespective_view_distance_scale", 2.0)   # more haze toward the horizon
+sun = next(a for a in eas.get_all_level_actors() if isinstance(a, unreal.DirectionalLight)).get_component_by_class(unreal.DirectionalLightComponent)
+sun.modify()
+sun.set_editor_property("intensity", 12000.0)
+pp = next(a for a in eas.get_all_level_actors() if isinstance(a, unreal.PostProcessVolume))
+pp.modify()
+s = pp.get_editor_property("settings")
+s.set_editor_property("auto_exposure_max_brightness", 11.5)
+pp.set_editor_property("settings", s)
+unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).save_current_level()
+log("done")
