@@ -82,84 +82,57 @@
           (Variables|Default|SetState 2)
           (Variables|Default|SetMsg "Off envelope - probe broke out of the drogue!"))
         (else
-          ; ---- free drogue: own integrator + contact model of the basket (no Chaos -> no depenetration pops).
-          ; Basket frame: hub at origin, +X toward the pod, opening at x=-83 (rim radius 40), throat at x=-49.5.
-          ; Inner wall R(q) = 5 + 0.3 q + 0.02 q^2 with q = -(x+49.5) (fitted to line traces of the parachute hulls).
+          ; ---- free drogue: own integrator; contact = Unreal sweeps of the parachute's 24 convex hulls against the
+          ; refuelling probe's per-polygon collision (the only two colliding objects in the scene).
           (bind dt (Math|Float|Min(Float) :A DeltaSeconds :B 0.05))
           (bind kf (Math|Float|Min(Float) :A 1.0 :B (* 4.0 dt)))
+          (if (> (Math|Vector|Distance(Vector) :V1 probe :V2 (Variables|Default|GetLP)) 200.0)
+            (Variables|Default|SetLP probe))
           ; spring-damper toward the trail point
           (bind V1 (+ (Variables|Default|GetDV) (* (- (* (- free (Variables|Default|GetDP)) 3.0) (* (Variables|Default|GetDV) 2.0)) dt)))
           (Variables|Default|SetDV V1)
-          (Variables|Default|SetDP (+ (Variables|Default|GetDP) (* V1 dt)))
-          ; probe in basket coordinates (pure nodes re-evaluate after each correction; scalars are latched into float vars
-          ; because the DSL types + - * from their context and would otherwise build vector ops)
+          (Variables|Default|SetTG (+ (Variables|Default|GetDP) (* (Variables|Default|GetDV) dt)))
           (bind rot (Math|Rotator|MakeRotfromX :X (- pod (Variables|Default|GetDP))))
-          (bind loc (Math|Transform|InverseTransformLocation :T (Math|Transform|MakeTransform :Location (Variables|Default|GetDP) :Rotation rot :Scale (Math|Vector|MakeVector :X 1.0 :Y 1.0 :Z 1.0)) :Location probe))
-          (bind rgt (Math|Vector|GetRightVector :InRot rot))
-          (bind upv (Math|Vector|GetUpVector :InRot rot))
           (bind fwd (Math|Vector|GetForwardVector :InRot rot))
-          (bind u (* (+ (* rgt (.y loc)) (* upv (.z loc))) (Variables|Default|GetIR)))
           (bind vrel (- (Variables|Default|GetDV) vel))
-          ; closure (probe toward basket along its axis) measured before any contact changes the drogue velocity
+          ; closure along the basket axis, before any contact changes the drogue velocity
           (Variables|Default|SetCL (Math|Vector|DotProduct :A (- vel (Variables|Default|GetDV)) :B fwd))
-          ; 1) probe against the inner cone wall: inelastic + friction -> the probe is funnelled toward the throat
-          (Variables|Default|SetCX (.x loc))
-          (Variables|Default|SetCR (Math|Float|Sqrt (+ (* (.y loc) (.y loc)) (* (.z loc) (.z loc)))))
-          (Variables|Default|SetIR (/ 1.0 (Math|Float|Max(Float) :A (Variables|Default|GetCR) :B 0.1)))
-          (Variables|Default|SetCQ (Math|Float|Max(Float) :A 0.0 :B (- -49.5 (Variables|Default|GetCX))))
-          (Variables|Default|SetCS (+ 0.3 (* 0.04 (Variables|Default|GetCQ))))
-          (Variables|Default|SetCK (/ 1.0 (Math|Float|Sqrt (+ 1.0 (* (Variables|Default|GetCS) (Variables|Default|GetCS))))))
-          (Variables|Default|SetP1 (- (+ (Variables|Default|GetCR) 4.0) (+ 5.0 (+ (* 0.3 (Variables|Default|GetCQ)) (* 0.02 (* (Variables|Default|GetCQ) (Variables|Default|GetCQ)))))))
-          (bind n1 (* (+ u (* fwd (Variables|Default|GetCS))) (Variables|Default|GetCK)))
-          (if (and (and (> (Variables|Default|GetCX) -85.0) (< (Variables|Default|GetCX) -49.5)) (and (< (Variables|Default|GetP1) 20.0) (> (Variables|Default|GetP1) 0.0)))
-            ; drogue compliance: lateral 1, axial 0.15 (aero drag resists fore-aft motion) -> W c = c - 0.85 fwd (c.fwd)
-            (Variables|Default|SetD1 (- 1.0 (* 0.85 (* (* (Variables|Default|GetCS) (Variables|Default|GetCK)) (* (Variables|Default|GetCS) (Variables|Default|GetCK))))))
+          ; 1) carry the drogue by the probe's motion this frame (same relative pose as last frame = no overlap) ...
+          (Transformation|SetWorldLocationAndRotation :self drg :NewLocation (+ (Variables|Default|GetDP) (- probe (Variables|Default|GetLP))) :NewRotation rot :bSweep false :bTeleport true)
+          ; 2) ... then sweep the hulls to where the drogue wants to be; the probe stops it where they really touch
+          (bind hit1 (Transformation|SetWorldLocation :self drg :NewLocation (Variables|Default|GetTG) :bSweep true :bTeleport false))
+          (bind (b1 o1 t1 d1 l1 i1 n1 in1) (Collision|BreakHitResult :Hit hit1))
+          (if b1
+            ; started inside (e.g. right after a disconnect): ease out along the depenetration normal
+            (if o1
+              (Transformation|SetWorldLocation :self drg :NewLocation (+ (Transformation|GetWorldLocation :self drg) (* n1 2.0)) :bSweep false :bTeleport true))
+            ; inelastic contact + friction, relative to the probe; drogue compliance lateral 1 / axial 0.15
+            (Variables|Default|SetD1 (- 1.0 (* 0.85 (* (Math|Vector|DotProduct :A n1 :B fwd) (Math|Vector|DotProduct :A n1 :B fwd)))))
             (Variables|Default|SetVN (/ (Math|Float|Min(Float) :A 0.0 :B (Math|Vector|DotProduct :A vrel :B n1)) (Variables|Default|GetD1)))
             (Variables|Default|SetDV (- (- (Variables|Default|GetDV) (* (- n1 (* (* fwd (Math|Vector|DotProduct :A n1 :B fwd)) 0.85)) (Variables|Default|GetVN))) (* (- (- vrel (* n1 (Math|Vector|DotProduct :A vrel :B n1))) (* (* fwd (Math|Vector|DotProduct :A (- vrel (* n1 (Math|Vector|DotProduct :A vrel :B n1))) :B fwd)) 0.85)) kf)))
-            (Variables|Default|SetQ1 (Math|Float|Min(Float) :A 4.0 :B (/ (* (Variables|Default|GetP1) (Variables|Default|GetCK)) (Variables|Default|GetD1))))
-            (Variables|Default|SetDP (+ (Variables|Default|GetDP) (* (- n1 (* (* fwd (Math|Vector|DotProduct :A n1 :B fwd)) 0.85)) (Variables|Default|GetQ1)))))
-          ; 2) probe against the rim (torus x=-83, r=40, tube 4 cm + probe 4 cm): glances off, or slides inward inside the lip
+            ; 3) slide the rest of the move along the contact plane (the canopy funnels the probe)
+            (bind rem (- (Variables|Default|GetTG) (Transformation|GetWorldLocation :self drg)))
+            (Transformation|SetWorldLocation :self drg :NewLocation (+ (Transformation|GetWorldLocation :self drg) (- rem (* n1 (Math|Vector|DotProduct :A rem :B n1)))) :bSweep true :bTeleport false))
+          (Variables|Default|SetDP (Transformation|GetWorldLocation :self drg))
+          (Transformation|SetWorldRotation :self drg :NewRotation (Math|Rotator|MakeRotfromX :X (- pod (Variables|Default|GetDP))) :bSweep false :bTeleport true)
+          ; probe in basket coordinates: rim message + latch
+          (bind loc (Math|Transform|InverseTransformLocation :T (Transformation|GetWorldTransform :self drg) :Location probe))
           (Variables|Default|SetCX (.x loc))
           (Variables|Default|SetCR (Math|Float|Sqrt (+ (* (.y loc) (.y loc)) (* (.z loc) (.z loc)))))
-          (Variables|Default|SetIR (/ 1.0 (Math|Float|Max(Float) :A (Variables|Default|GetCR) :B 0.1)))
-          (Variables|Default|SetRX (+ (Variables|Default|GetCX) 83.0))
-          (Variables|Default|SetRR (- (Variables|Default|GetCR) 40.0))
-          (Variables|Default|SetRD (Math|Float|Max(Float) :A 0.01 :B (Math|Float|Sqrt (+ (* (Variables|Default|GetRX) (Variables|Default|GetRX)) (* (Variables|Default|GetRR) (Variables|Default|GetRR))))))
-          (Variables|Default|SetIRD (/ -1.0 (Variables|Default|GetRD)))
-          (Variables|Default|SetP2 (- 8.0 (Variables|Default|GetRD)))
-          (bind n2 (* (+ (* fwd (Variables|Default|GetRX)) (* u (Variables|Default|GetRR))) (Variables|Default|GetIRD)))
-          (if (> (Variables|Default|GetP2) 0.0)
-            (Variables|Default|SetD2 (- 1.0 (* 0.85 (* (* (Variables|Default|GetRX) (Variables|Default|GetIRD)) (* (Variables|Default|GetRX) (Variables|Default|GetIRD))))))
-            (Variables|Default|SetVN (/ (Math|Float|Min(Float) :A 0.0 :B (Math|Vector|DotProduct :A vrel :B n2)) (Variables|Default|GetD2)))
-            (Variables|Default|SetDV (- (- (Variables|Default|GetDV) (* (- n2 (* (* fwd (Math|Vector|DotProduct :A n2 :B fwd)) 0.85)) (Variables|Default|GetVN))) (* (- (- vrel (* n2 (Math|Vector|DotProduct :A vrel :B n2))) (* (* fwd (Math|Vector|DotProduct :A (- vrel (* n2 (Math|Vector|DotProduct :A vrel :B n2))) :B fwd)) 0.85)) kf)))
-            (Variables|Default|SetQ2 (Math|Float|Min(Float) :A 4.0 :B (/ (Variables|Default|GetP2) (Variables|Default|GetD2))))
-            (Variables|Default|SetDP (+ (Variables|Default|GetDP) (* (- n2 (* (* fwd (Math|Vector|DotProduct :A n2 :B fwd)) 0.85)) (Variables|Default|GetQ2))))
-            (if (> (Variables|Default|GetCR) 36.0)
-              (Variables|Default|SetMsg "Hit the basket rim - back out and line up again")))
-          ; 3) probe at the throat (not latched): pushes the drogue forward
-          (Variables|Default|SetCX (.x loc))
-          (Variables|Default|SetCR (Math|Float|Sqrt (+ (* (.y loc) (.y loc)) (* (.z loc) (.z loc)))))
-          (Variables|Default|SetIR (/ 1.0 (Math|Float|Max(Float) :A (Variables|Default|GetCR) :B 0.1)))
-          (Variables|Default|SetP3 (+ (Variables|Default|GetCX) 49.5))
-          (if (and (and (> (Variables|Default|GetP3) 0.0) (< (Variables|Default|GetP3) 30.0)) (< (Variables|Default|GetCR) 12.0))
-            (Variables|Default|SetDV (- (- (Variables|Default|GetDV) (* fwd (Math|Float|Min(Float) :A 0.0 :B (Math|Vector|DotProduct :A vrel :B fwd)))) (* (- (- vrel (* fwd (Math|Vector|DotProduct :A vrel :B fwd))) (* (* fwd (Math|Vector|DotProduct :A (- vrel (* fwd (Math|Vector|DotProduct :A vrel :B fwd))) :B fwd)) 0.85)) kf)))
-            (Variables|Default|SetDP (+ (Variables|Default|GetDP) (* fwd (Math|Float|Min(Float) :A 4.0 :B (Variables|Default|GetP3))))))
-          ; latch: probe reached the throat area
-          (Variables|Default|SetCX (.x loc))
-          (Variables|Default|SetCR (Math|Float|Sqrt (+ (* (.y loc) (.y loc)) (* (.z loc) (.z loc)))))
-          (Variables|Default|SetIR (/ 1.0 (Math|Float|Max(Float) :A (Variables|Default|GetCR) :B 0.1)))
+          (if (and b1 (> (Variables|Default|GetCR) 30.0))
+            (Variables|Default|SetMsg "Hit the basket rim - back out and line up again"))
           (if (and (and (== (Variables|Default|GetState) 2) (> t (Variables|Default|GetKO))) (and (> (Variables|Default|GetCX) -60.0) (< (Variables|Default|GetCR) 9.0)))
             (bind clos (Variables|Default|GetCL))
             (if (> clos 250.0)
-              (Variables|Default|SetDV (+ (Variables|Default|GetDV) (+ (* rgt (Math|Float|SelectFloat :A -200.0 :B 200.0 :bPickA (>= (.y loc) 0.0))) (* upv 90.0))))
+              (Variables|Default|SetDV (+ (Variables|Default|GetDV) (+ (* (Math|Vector|GetRightVector :InRot rot) (Math|Float|SelectFloat :A -200.0 :B 200.0 :bPickA (>= (.y loc) 0.0))) (* (Math|Vector|GetUpVector :InRot rot) 90.0))))
               (Variables|Default|SetMsg "TOO FAST - the basket was knocked off (max closure 2.5 m/s)")
               (Variables|Default|SetKO (+ t 1.0))
               (elif (< clos 40.0)
                 (Variables|Default|SetMsg "Closure too slow - the probe did not latch (min 0.5 m/s)")
                 (else
                   (Variables|Default|SetState 3)
-                  (Variables|Default|SetMsg "CONTACT! Keep pushing in for the green light")))))
-          (Transformation|SetWorldLocationAndRotation :self drg :NewLocation (Variables|Default|GetDP) :NewRotation (Math|Rotator|MakeRotfromX :X (- pod (Variables|Default|GetDP))) :bSweep false :bTeleport true)))
+                  (Variables|Default|SetMsg "CONTACT! Keep pushing in for the green light")))))))
+      (Variables|Default|SetLP probe)
       ; hose always taut: cable length = pod-to-drogue distance (slightly shorter -> tension)
       (Class|CableComponent|SetCableLength :self (Variables|Default|GetHose) :CableLength (Math|Float|Max(Float) :A 20.0 :B (* 0.99 (Math|Vector|Distance(Vector) :V1 pod :V2 (Transformation|GetWorldLocation :self drg)))))
       (bind dprobe (Math|Vector|Distance(Vector) :V1 probe :V2 (Transformation|GetWorldLocation :self drg)))

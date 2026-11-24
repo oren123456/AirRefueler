@@ -10,3 +10,7 @@ for n in ("bThrottleCPUWhenNotForeground", "throttle_cpu_when_not_foreground"):
         break
     except Exception as e:
         unreal.log("[NoThrottle] %s: %s" % (n, e))
+try:
+    s.save_config(); unreal.log("[NoThrottle] saved to config")
+except Exception as e:
+    unreal.log("[NoThrottle] save_config: %s" % e)
