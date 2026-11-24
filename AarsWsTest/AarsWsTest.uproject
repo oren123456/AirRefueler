@@ -1,0 +1,12 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "",
+	"Description": "Throwaway test of the WebSocketNetworking plugin for the AARS <-> World link",
+	"Modules": [
+		{ "Name": "AarsWsTest", "Type": "Runtime", "LoadingPhase": "Default" }
+	],
+	"Plugins": [
+		{ "Name": "WebSocketNetworking", "Enabled": true }
+	]
+}
