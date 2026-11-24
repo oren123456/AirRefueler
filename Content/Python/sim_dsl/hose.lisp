@@ -1,12 +1,16 @@
 (event EventBeginPlay
-  (Cable|SetAttachEndtoComponent :self (Variables|Default|GetHose) :Component (Variables|Default|GetParachute))
+  ; start with the hose fully trailed (READY); E / joystick button 2 rewinds it
+  (bind trail (+ (Transformation|GetActorLocation) (* (Math|Vector|MakeVector :X 0.0 :Y -0.9877 :Z -0.1564) 2400.0)))
   (Physics|SetSimulatePhysics :self (Variables|Default|GetParachute) :bSimulate false)
-  (Variables|Default|SetDP (Transformation|GetWorldLocation :self (Variables|Default|GetParachute)))
+  (Transformation|SetWorldLocationAndRotation :self (Variables|Default|GetParachute) :NewLocation trail :NewRotation (Math|Rotator|MakeRotfromX :X (- (Transformation|GetActorLocation) trail)) :bSweep false :bTeleport true)
+  (Cable|SetAttachEndtoComponent :self (Variables|Default|GetHose) :Component (Variables|Default|GetParachute))
+  (Class|CableComponent|SetCableLength :self (Variables|Default|GetHose) :CableLength 2376.0)
+  (Variables|Default|SetDP trail)
   (Variables|Default|SetDV (Math|Vector|MakeVector :X 0.0 :Y 0.0 :Z 0.0))
   (Variables|Default|SetFuel 1200.0)
-  (Variables|Default|SetState 0)
-  (Variables|Default|SetHoseLen 30.0)
-  (Variables|Default|SetMsg "Hose stowed - press E / joystick button 2 to trail the hose"))
+  (Variables|Default|SetHoseLen 2400.0)
+  (Variables|Default|SetState 2)
+  (Variables|Default|SetMsg "READY (amber) - fly the probe into the basket, closure 0.5-2.5 m/s  (E / button 2 = rewind)"))
 
 (event EventTick (DeltaSeconds)
   (bind t (Utilities|Time|GetGameTimeinSeconds))

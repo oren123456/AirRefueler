@@ -22,7 +22,9 @@ def tick(dt):
     probe = [c for c in pawn.get_components_by_class(unreal.SceneComponent) if c.get_name() == "ProbeTip"][0]
     S = hose.get_editor_property("State")
     if st["phase"] == 0 and t > 0.5:
-        pawn.set_editor_property("ExtendCount", pawn.get_editor_property("ExtendCount") + 1); st["phase"] = 1
+        if S != 2:   # hose starts trailed now; only extend if it is stowed
+            pawn.set_editor_property("ExtendCount", pawn.get_editor_property("ExtendCount") + 1)
+        st["phase"] = 1
     elif st["phase"] == 1 and S == 2:
         st["phase"] = 2; st["tready"] = t
     elif st["phase"] == 2 and t > st["tready"] + 2.0:
