@@ -54,7 +54,7 @@
               (else
                 (Variables|Default|SetMsg (Utilities|String|Append :A "Not in lock range (L): " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Math|Float|Max(Float) :A 0.0 :B (- -49.5 (Variables|Default|GetCX))))) :B (Utilities|String|Append :A " cm short of the coupling (max 30), " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Variables|Default|GetCR))) :B " cm off-axis (max 12)"))))))))))
       (if (== st 0)
-        (Variables|Default|SetHoseLen (Math|Interpolation|FInterpTo :Current (Variables|Default|GetHoseLen) :Target 30.0 :DeltaTime DeltaSeconds :InterpSpeed 2.0)))
+        (Variables|Default|SetHoseLen (Math|Interpolation|FInterpTo :Current (Variables|Default|GetHoseLen) :Target -76.0 :DeltaTime DeltaSeconds :InterpSpeed 2.0)))
       (if (== st 1)
         (bind hl (+ (Variables|Default|GetHoseLen) (* 200.0 DeltaSeconds)))
         (Variables|Default|SetHoseLen hl)
@@ -63,18 +63,22 @@
           (Variables|Default|SetState 2)
           (Variables|Default|SetMsg "READY (amber) - fly the probe into the basket, closure 0.5-2.5 m/s  (E / button 2 = rewind)")))
       (if (== st 4)
-        (bind hl2 (- (Variables|Default|GetHoseLen) (* 200.0 DeltaSeconds)))
+        ; reel slows to 0.5 m/s for the last 1.5 m so the basket docks gently into the pod tunnel
+        (bind hl2 (- (Variables|Default|GetHoseLen) (* (Math|Float|SelectFloat :A 200.0 :B 50.0 :bPickA (> (Variables|Default|GetHoseLen) 150.0)) DeltaSeconds)))
         (Variables|Default|SetHoseLen hl2)
-        (if (<= hl2 30.0)
+        (if (<= hl2 -76.0)
           (Variables|Default|SetState 0)
           (Variables|Default|SetMsg "Hose stowed - E / joystick button 2 to trail again, R = restart")))
       (bind hlen (Variables|Default|GetHoseLen))
-      (bind k (/ hlen 2400.0))
+      (bind k (Math|Float|Max(Float) :A 0.0 :B (/ hlen 2400.0)))
       ; turbulence: gusty 3-frequency motion of the trail point (~ +/-0.6 m lateral/vertical at full trail), x TurbAmp
       (bind ta (* k (Variables|Realism|GetTurbAmp)))
       (bind wob (Math|Vector|MakeVector :X (* ta (+ (* 40.0 (Math|Trig|Sin(Radians) (+ (* t 0.55) 0.0))) (+ (* 22.0 (Math|Trig|Sin(Radians) (+ (* t 1.37) 1.3))) (* 10.0 (Math|Trig|Sin(Radians) (+ (* t 2.9) 0.4)))))) :Y (* ta (+ (* 18.0 (Math|Trig|Sin(Radians) (+ (* t 0.31) 1.0))) (* 8.0 (Math|Trig|Sin(Radians) (+ (* t 0.83) 2.2))))) :Z (* ta (+ (* 32.0 (Math|Trig|Sin(Radians) (+ (* t 0.47) 2.1))) (+ (* 18.0 (Math|Trig|Sin(Radians) (+ (* t 1.13) 0.7))) (* 8.0 (Math|Trig|Sin(Radians) (+ (* t 3.3) 2.5))))))))
-      (bind free (+ (+ pod (* (Math|Vector|MakeVector :X 0.0 :Y -0.9877 :Z -0.1564) hlen)) wob))
+      ; trail point; HoseLen < 0 = drawn into the pod tunnel along the pod axis (stowed at -76: basket rim at the mouth)
+      (bind free (+ (+ (+ pod (* (Math|Vector|MakeVector :X 0.0 :Y -0.9877 :Z -0.1564) (Math|Float|Max(Float) :A 0.0 :B hlen))) (Math|Vector|MakeVector :X 0.0 :Y (Math|Float|Max(Float) :A 0.0 :B (- 0.0 hlen)) :Z 0.0)) wob))
       (bind drg (Variables|Default|GetParachute))
+      ; the canopy folds radially (to 85 %) as it is drawn into the tunnel
+      (Transformation|SetRelativeScale3D :self drg :NewScale3D (Math|Vector|MakeVector :X 1.0 :Y (- 1.0 (* 0.15 (Math|Float|Clamp(Float) :Value (/ (- -30.0 hlen) 46.0) :Min 0.0 :Max 1.0))) :Z (- 1.0 (* 0.15 (Math|Float|Clamp(Float) :Value (/ (- -30.0 hlen) 46.0) :Min 0.0 :Max 1.0)))))
       (if (== (Variables|Default|GetState) 3)
         (bind d (Math|Vector|Distance(Vector) :V1 pod :V2 probe))
         (Variables|Default|SetHoseLen d)
@@ -132,10 +136,13 @@
           (Variables|Default|SetBL (Math|Float|Max(Float) :A 1.0 :B (Math|Float|Sqrt (+ (* (.x lat) (.x lat)) (* (.z lat) (.z lat))))))
           (Variables|Default|SetBI (/ (* (Variables|Realism|GetBowStrength) (* (Variables|Default|GetBF) (Variables|Default|GetBF))) (Variables|Default|GetBL)))
           ; spring-damper toward the trail point + bow wave
-          (bind V1 (+ (Variables|Default|GetDV) (* (+ (- (* (- free (Variables|Default|GetDP)) 3.0) (* (Variables|Default|GetDV) 2.0)) (+ (* lat (Variables|Default|GetBI)) (* (Variables|Default|GetWD) (Variables|Default|GetWA)))) dt)))
+          ; stiffer, near-critically damped spring close to / inside the pod (no wobble in the tunnel)
+          (bind cn (Math|Float|Clamp(Float) :Value (- 1.0 (/ hlen 150.0)) :Min 0.0 :Max 1.0))
+          (bind V1 (+ (Variables|Default|GetDV) (* (+ (- (* (- free (Variables|Default|GetDP)) (+ 3.0 (* 47.0 cn))) (* (Variables|Default|GetDV) (+ 2.0 (* 12.0 cn)))) (+ (* lat (Variables|Default|GetBI)) (* (Variables|Default|GetWD) (Variables|Default|GetWA)))) dt)))
           (Variables|Default|SetDV V1)
           (Variables|Default|SetTG (+ (Variables|Default|GetDP) (* (Variables|Default|GetDV) dt)))
-          (bind rot (Math|Rotator|MakeRotfromX :X (- pod (Variables|Default|GetDP))))
+          ; drogue axis: toward the pod; blends to the pod axis (+Y) as it reaches / enters the tunnel
+          (bind rot (Math|Rotator|MakeRotfromX :X (+ (- pod (Variables|Default|GetDP)) (Math|Vector|MakeVector :X 0.0 :Y (* 300.0 (Math|Float|Clamp(Float) :Value (- 1.0 (/ hlen 100.0)) :Min 0.0 :Max 2.0)) :Z 0.0))))
           (bind fwd (Math|Vector|GetForwardVector :InRot rot))
           (bind vrel (- (Variables|Default|GetDV) vel))
           ; closure along the basket axis, before any contact changes the drogue velocity
@@ -157,7 +164,7 @@
             (bind rem (- (Variables|Default|GetTG) (Transformation|GetWorldLocation :self drg)))
             (Transformation|SetWorldLocation :self drg :NewLocation (+ (Transformation|GetWorldLocation :self drg) (- rem (* n1 (Math|Vector|DotProduct :A rem :B n1)))) :bSweep true :bTeleport false))
           (Variables|Default|SetDP (Transformation|GetWorldLocation :self drg))
-          (Transformation|SetWorldRotation :self drg :NewRotation (Math|Rotator|MakeRotfromX :X (- pod (Variables|Default|GetDP))) :bSweep false :bTeleport true)
+          (Transformation|SetWorldRotation :self drg :NewRotation (Math|Rotator|MakeRotfromX :X (+ (- pod (Variables|Default|GetDP)) (Math|Vector|MakeVector :X 0.0 :Y (* 300.0 (Math|Float|Clamp(Float) :Value (- 1.0 (/ hlen 100.0)) :Min 0.0 :Max 2.0)) :Z 0.0))) :bSweep false :bTeleport true)
           ; probe in basket coordinates: rim message + latch
           (bind loc (Math|Transform|InverseTransformLocation :T (Transformation|GetWorldTransform :self drg) :Location probe))
           (Variables|Default|SetCX (.x loc))
@@ -216,7 +223,7 @@
       (Rendering|SetVisibility :self (Variables|Default|GetLightGreen) :bNewVisibility (and (== sNow 3) (Variables|Default|GetFlowing)) :bPropagateToChildren false)
       (bind dprobe (Math|Vector|Distance(Vector) :V1 probe :V2 (Transformation|GetWorldLocation :self drg)))
       (bind line (Utilities|String|Append :A (Variables|Default|GetMsg) :B (Utilities|String|Append :A (Utilities|String|Append :A "    |  tip " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Variables|Default|GetCX))) :B (Utilities|String|Append :A " / " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Variables|Default|GetCR))) :B (Utilities|String|Append :A " cm  |  slack " :B (Utilities|String|ToString(Integer) (Math|Float|Round (Variables|Default|GetSL)))))))) :B (Utilities|String|Append :A " cm  |  range " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ dprobe 100.0))) :B (Utilities|String|Append :A " m  |  closure " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (.y vel))) :B (Utilities|String|Append :A " cm/s  |  fuel " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ (Variables|Default|GetFuel) 31.6))) :B "%")))))))))
-      (Development|PrintString :InString "W/S fwd-back   Up/Down throttle (X = 0)   A/D strafe   Space/Ctrl up-down   Shift fast   Mouse look   C recenter   E / btn 2 hose out-in   L lock/unlock   R restart" :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.7,G=0.7,B=0.7,A=1.0)" :Duration 0.25 :Key "RefuelHelp")
+      (Development|PrintString :InString "W/S fwd-back   Up/Down throttle (X = 0)   A/D strafe   Space/Ctrl up-down   Shift fast   Mouse look   C recenter   E / btn 2 hose out-in   L lock/unlock   H HUD refuel aid   R restart" :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.7,G=0.7,B=0.7,A=1.0)" :Duration 0.25 :Key "RefuelHelp")
       (if (Variables|Default|GetFlowing)
         (Development|PrintString :InString line :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.1,G=1.0,B=0.2,A=1.0)" :Duration 0.25 :Key "RefuelHUD")
         (else
