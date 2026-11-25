@@ -18,6 +18,8 @@ SHOTS = [
     ("06_connected_closeup", "locked", "close", 45.0),
     ("07_connected_chase", "locked", "chase", 55.0),
     ("08_hose_closeup", "behind8m", "hose", 40.0),
+    ("09_hud", "behind8m", "hud", 34.0),
+    ("10_hud_contact", "locked", "hud", 34.0),
 ]
 def tick(dt):
     try: _tick(dt)
@@ -93,6 +95,9 @@ def _tick(dt):
         cam.set_relative_location(st["camrel"], False, True); cam.set_field_of_view(fov)
         rr = unreal.MathLibrary.find_look_at_rotation(cam.get_world_location(), d)
         p.set_editor_property("CamYaw", rr.yaw - 90.0); p.set_editor_property("CamPitch", rr.pitch + 4.0)
+    elif mode == "hud":   # pilot eye, looking through the combiner (narrow FOV so the symbology is readable)
+        cam.set_relative_location(st["camrel"], False, True); cam.set_field_of_view(fov)
+        p.set_editor_property("CamYaw", 0.0); p.set_editor_property("CamPitch", -4.5)
     elif mode == "side":
         frame(p, cam, [pod, d, mir + V(0, -700, 0), mir + V(0, 600, 0)], V(-1.0, 0.12, 0.10), fov, 1.05)
     elif mode == "chase":
