@@ -205,7 +205,10 @@
         (Variables|Default|SetWT t)
         (Variables|Default|SetWD (Math|Vector|MakeVector :X (Math|Float|SelectFloat :A 1.0 :B -1.0 :bPickA (> (Math|Trig|Sin(Radians) (* t 7.0)) 0.0)) :Y 0.0 :Z 0.5))
         (Variables|Default|SetMsg "HOSE WHIP - closure too fast for the reel (max 2.5 m/s), disconnected"))
-      (Class|CableComponent|SetCableLength :self (Variables|Default|GetHose) :CableLength (Math|Float|Max(Float) :A 20.0 :B (+ (* 0.99 (Math|Float|Max(Float) :A dd :B (Variables|Default|GetReelLen))) (* 90.0 (Variables|Default|GetWK)))))
+      ; hose weight bow: trailing/connected the hose gets 1.2% more length than the chord (+12% of the push-in when
+      ; connected) so it hangs in a curve; taut while extending/rewinding; + whip slack
+      (bind sg (Variables|Default|GetState))
+      (Class|CableComponent|SetCableLength :self (Variables|Default|GetHose) :CableLength (Math|Float|Max(Float) :A 20.0 :B (+ (+ (* (Math|Float|SelectFloat :A 1.012 :B 0.99 :bPickA (or (== sg 2) (== sg 3))) (Math|Float|Max(Float) :A dd :B (Variables|Default|GetReelLen))) (* (Math|Float|SelectFloat :A 0.12 :B 0.0 :bPickA (== sg 3)) (Math|Float|Max(Float) :A 0.0 :B (- 2400.0 dd)))) (* 90.0 (Variables|Default|GetWK)))))
       ; pod signal lights: red = hose moving, amber = ready / connected without flow, green = fuel flowing, off = stowed
       (bind sNow (Variables|Default|GetState))
       (Rendering|SetVisibility :self (Variables|Default|GetLightRed) :bNewVisibility (or (== sNow 1) (== sNow 4)) :bPropagateToChildren false)

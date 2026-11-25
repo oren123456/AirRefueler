@@ -17,6 +17,7 @@ SHOTS = [
     ("05_probe_entering_basket", "entering", "close", 45.0),
     ("06_connected_closeup", "locked", "close", 45.0),
     ("07_connected_chase", "locked", "chase", 55.0),
+    ("08_hose_closeup", "behind8m", "hose", 40.0),
 ]
 def tick(dt):
     try: _tick(dt)
@@ -71,11 +72,19 @@ def _tick(dt):
             p.set_actor_location(p.get_actor_location() + off, False, True)
             p.set_editor_property("Velocity", V(0, 0, 0)); p.set_editor_property("KThr", 0.0)
         elif stage == "locked":
-            p.set_editor_property("KThr", 40.0); st["locking"] = True
+            st["locking"] = True; st["tlock"] = now
+            h.set_editor_property("TurbAmp", 0.0); h.set_editor_property("BowStrength", 0.0)
         st["tn"] = now + 2.5
     if st.get("locking"):
-        if S == 2 and loc.x > -70 and r < 12: p.set_editor_property("LockCount", p.get_editor_property("LockCount") + 1)
-        if S == 3: st["locking"] = False; st["tn"] = now + 2.0
+        # home on the basket mouth, then L
+        aimp = d - fwd * 55.0; dv = aimp - pr.get_world_location(); Lh = max(dv.length(), 1.0)
+        p.set_editor_property("Velocity", dv * (min(60.0, 2.0 * Lh) / Lh))
+        if S == 2 and loc.x > -65 and r < 10 and now > st.get("tpress", 0): p.set_editor_property("LockCount", p.get_editor_property("LockCount") + 1); st["tpress"] = now + 0.5
+        if S == 3:
+            st["locking"] = False; st["tn"] = now + 2.0; p.set_editor_property("Velocity", V(0, 0, 0))
+            h.set_editor_property("TurbAmp", 1.0); h.set_editor_property("BowStrength", 120.0)
+        if now - st["tlock"] > 25:
+            log("could not lock in 25 s - skipping"); st["locking"] = False; st["i"] = len(SHOTS); st["tn"] = now
         return
     if stage != "locked": p.set_editor_property("Velocity", V(0, 0, 0))
     # --- camera
@@ -91,6 +100,10 @@ def _tick(dt):
     elif mode == "wide":
         if "tk" not in st: st["tk"] = tanker_points(w)
         frame(p, cam, st["tk"] + [mir + V(0, -700, 0), mir + V(0, 600, 0)], V(0.45, -0.75, 0.42), fov, 0.95)
+    elif mode == "hose":
+        pts = h.get_component_by_class(unreal.CableComponent).get_cable_particle_locations()
+        q = pts[int(len(pts) * 0.8)] if pts else d + (pod - d) * 0.25
+        aim(p, cam, q + V(-300.0, 60.0, 60.0), q, fov)
     elif mode == "close":
         aim(p, cam, d + V(-170.0, -70.0, 40.0), d + V(0, -45, 0), fov)
     if not st["shot"] and now > st["tn"]:
