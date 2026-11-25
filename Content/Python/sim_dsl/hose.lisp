@@ -30,7 +30,7 @@
           (elif (or (== st 1) (== st 2))
             (Variables|Default|SetState 4)
             (Variables|Default|SetMsg "Hose rewinding...  (E / button 2 = trail)"))))
-      ; manual lock: L / joystick button 4 locks when the probe is inside the basket (within 80 cm of the coupling,
+      ; manual lock: L / joystick button 4 locks when the probe tip is inside the basket (80..25 cm behind the hub,
       ; 12 cm of the axis; CX/CR from the last frame), at any closure speed. Pressing it again unlocks.
       (bind lk (Class|BPMiragePawn|GetLockCount :self mp))
       (if (!= lk (Variables|Default|GetLastLock))
@@ -41,7 +41,7 @@
           (Variables|Default|SetKO (+ t 1.5))
           (Variables|Default|SetMsg "UNLOCKED (L) - back out of the basket")
           (elif (== st 2)
-            (if (and (> (Variables|Default|GetCX) -80.0) (< (Variables|Default|GetCR) 12.0))
+            (if (and (and (> (Variables|Default|GetCX) -80.0) (< (Variables|Default|GetCX) -25.0)) (< (Variables|Default|GetCR) 12.0))
               (Variables|Default|SetState 3)
               (Class|BPMiragePawn|SetVelocity :self mp :Velocity (Math|Vector|MakeVector :X 0.0 :Y 0.0 :Z 0.0))
               (Class|BPMiragePawn|SetKThr :self mp :KThr 0.0)
@@ -65,7 +65,9 @@
           (Variables|Default|SetMsg "Hose stowed - E / joystick button 2 to trail again, R = restart")))
       (bind hlen (Variables|Default|GetHoseLen))
       (bind k (/ hlen 2400.0))
-      (bind wob (Math|Vector|MakeVector :X (* k (+ (* 12.0 (Math|Trig|Sin(Radians) (* t 0.8))) (* 4.0 (Math|Trig|Sin(Radians) (* t 2.1))))) :Y 0.0 :Z (* k (+ (* 8.0 (Math|Trig|Sin(Radians) (* t 1.1))) (* 3.0 (Math|Trig|Sin(Radians) (* t 2.7)))))))
+      ; turbulence: gusty 3-frequency motion of the trail point (~ +/-0.6 m lateral/vertical at full trail), x TurbAmp
+      (bind ta (* k (Variables|Realism|GetTurbAmp)))
+      (bind wob (Math|Vector|MakeVector :X (* ta (+ (* 40.0 (Math|Trig|Sin(Radians) (+ (* t 0.55) 0.0))) (+ (* 22.0 (Math|Trig|Sin(Radians) (+ (* t 1.37) 1.3))) (* 10.0 (Math|Trig|Sin(Radians) (+ (* t 2.9) 0.4)))))) :Y (* ta (+ (* 18.0 (Math|Trig|Sin(Radians) (+ (* t 0.31) 1.0))) (* 8.0 (Math|Trig|Sin(Radians) (+ (* t 0.83) 2.2))))) :Z (* ta (+ (* 32.0 (Math|Trig|Sin(Radians) (+ (* t 0.47) 2.1))) (+ (* 18.0 (Math|Trig|Sin(Radians) (+ (* t 1.13) 0.7))) (* 8.0 (Math|Trig|Sin(Radians) (+ (* t 3.3) 2.5))))))))
       (bind free (+ (+ pod (* (Math|Vector|MakeVector :X 0.0 :Y -0.9877 :Z -0.1564) hlen)) wob))
       (bind drg (Variables|Default|GetParachute))
       (if (== (Variables|Default|GetState) 3)
@@ -114,8 +116,16 @@
           (bind kf (Math|Float|Min(Float) :A 1.0 :B (* 4.0 dt)))
           (if (> (Math|Vector|Distance(Vector) :V1 probe :V2 (Variables|Default|GetLP)) 200.0)
             (Variables|Default|SetLP probe))
-          ; spring-damper toward the trail point
-          (bind V1 (+ (Variables|Default|GetDV) (* (- (* (- free (Variables|Default|GetDP)) 3.0) (* (Variables|Default|GetDV) 2.0)) dt)))
+          ; bow wave: the Mirage nose (7.5 m ahead of the pawn origin) pushes the basket outward/up within 4 m,
+          ; growing quadratically as it closes in (x BowStrength, cm/s^2 at the nose)
+          (bind nose (+ (Transformation|GetActorLocation :self mp) (Math|Vector|MakeVector :X 0.0 :Y 750.0 :Z 30.0)))
+          (bind rel (- (Variables|Default|GetDP) nose))
+          (bind lat (Math|Vector|MakeVector :X (.x rel) :Y 0.0 :Z (+ (.z rel) 40.0)))
+          (Variables|Default|SetBF (Math|Float|Clamp(Float) :Value (- 1.0 (/ (Math|Vector|Distance(Vector) :V1 (Variables|Default|GetDP) :V2 nose) 400.0)) :Min 0.0 :Max 1.0))
+          (Variables|Default|SetBL (Math|Float|Max(Float) :A 1.0 :B (Math|Float|Sqrt (+ (* (.x lat) (.x lat)) (* (.z lat) (.z lat))))))
+          (Variables|Default|SetBI (/ (* (Variables|Realism|GetBowStrength) (* (Variables|Default|GetBF) (Variables|Default|GetBF))) (Variables|Default|GetBL)))
+          ; spring-damper toward the trail point + bow wave
+          (bind V1 (+ (Variables|Default|GetDV) (* (+ (- (* (- free (Variables|Default|GetDP)) 3.0) (* (Variables|Default|GetDV) 2.0)) (* lat (Variables|Default|GetBI))) dt)))
           (Variables|Default|SetDV V1)
           (Variables|Default|SetTG (+ (Variables|Default|GetDP) (* (Variables|Default|GetDV) dt)))
           (bind rot (Math|Rotator|MakeRotfromX :X (- pod (Variables|Default|GetDP))))
@@ -147,7 +157,7 @@
           (Variables|Default|SetCR (Math|Float|Sqrt (+ (* (.y loc) (.y loc)) (* (.z loc) (.z loc)))))
           (if (and b1 (> (Variables|Default|GetCR) 30.0))
             (Variables|Default|SetMsg "Hit the basket rim - back out and line up again"))
-          (if (and (and (== (Variables|Default|GetState) 2) (> t (Variables|Default|GetKO))) (and (> (Variables|Default|GetCX) -60.0) (< (Variables|Default|GetCR) 9.0)))
+          (if (and (and (== (Variables|Default|GetState) 2) (> t (Variables|Default|GetKO))) (and (and (> (Variables|Default|GetCX) -60.0) (< (Variables|Default|GetCX) -25.0)) (< (Variables|Default|GetCR) 9.0)))
             (bind clos (Variables|Default|GetCL))
             (if (> clos 250.0)
               (Variables|Default|SetDV (+ (Variables|Default|GetDV) (+ (* (Math|Vector|GetRightVector :InRot rot) (Math|Float|SelectFloat :A -200.0 :B 200.0 :bPickA (>= (.y loc) 0.0))) (* (Math|Vector|GetUpVector :InRot rot) 90.0))))
@@ -164,6 +174,11 @@
       (Variables|Default|SetLP probe)
       ; hose always taut: cable length = pod-to-drogue distance (slightly shorter -> tension)
       (Class|CableComponent|SetCableLength :self (Variables|Default|GetHose) :CableLength (Math|Float|Max(Float) :A 20.0 :B (* 0.99 (Math|Vector|Distance(Vector) :V1 pod :V2 (Transformation|GetWorldLocation :self drg)))))
+      ; pod signal lights: red = hose moving, amber = ready / connected without flow, green = fuel flowing, off = stowed
+      (bind sNow (Variables|Default|GetState))
+      (Rendering|SetVisibility :self (Variables|Default|GetLightRed) :bNewVisibility (or (== sNow 1) (== sNow 4)) :bPropagateToChildren false)
+      (Rendering|SetVisibility :self (Variables|Default|GetLightAmber) :bNewVisibility (or (== sNow 2) (and (== sNow 3) (not (Variables|Default|GetFlowing)))) :bPropagateToChildren false)
+      (Rendering|SetVisibility :self (Variables|Default|GetLightGreen) :bNewVisibility (and (== sNow 3) (Variables|Default|GetFlowing)) :bPropagateToChildren false)
       (bind dprobe (Math|Vector|Distance(Vector) :V1 probe :V2 (Transformation|GetWorldLocation :self drg)))
       (bind line (Utilities|String|Append :A (Variables|Default|GetMsg) :B (Utilities|String|Append :A "    |  range " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ dprobe 100.0))) :B (Utilities|String|Append :A " m  |  closure " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (.y vel))) :B (Utilities|String|Append :A " cm/s  |  fuel " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ (Variables|Default|GetFuel) 31.6))) :B "%"))))))))
       (Development|PrintString :InString "W/S fwd-back   Up/Down throttle (X = 0)   A/D strafe   Space/Ctrl up-down   Shift fast   Mouse look   C recenter   E / btn 2 hose out-in   L lock/unlock   R restart" :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.7,G=0.7,B=0.7,A=1.0)" :Duration 0.25 :Key "RefuelHelp")
