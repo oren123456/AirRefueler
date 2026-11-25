@@ -78,25 +78,36 @@ if (length(pA) < RB) {
   float arc = f.ln(abs(length(pA) - 0.955), 0.025, aa) * step(0.0, atan2(pA.x, pA.y) + radians(150.0 - 150.0 / 800.0 * 300.0)) * step(atan2(pA.x, pA.y), radians(-150.0 + 600.0 / 800.0 * 300.0));
   col = lerp(lerp(FACE, float3(0.1, 0.6, 0.15), arc), INK, ink); glow = ink * 0.05;
 }
-// ---- attitude (standby)
+// ---- attitude: Mirage-style gyro ball (grey-blue sky / black ground, pitch + heading grid), fixed white reference
 if (length(pT) < RB) {
-  float aa = max(length(dT) + length(eT), 1e-4) * 0.7; float ink = 0.0;
-  float2 q = f.rot(pT, -radians(roll)); float hy = -pitch / 35.0;
-  float3 ball = q.y > hy ? float3(0.07, 0.2, 0.48) : float3(0.24, 0.13, 0.05);
-  ink = max(ink, f.ln(abs(q.y - hy), 0.012, aa));
-  for (int k = -3; k <= 3; k++) {
-    if (k == 0) continue;
-    float y = hy + k * 10.0 / 35.0; float hw = (k % 2 == 0) ? 0.3 : 0.18;
-    ink = max(ink, f.ln(f.seg(q, float2(-hw, y), float2(hw, y)), 0.01, aa));
-  }
-  for (int j = -3; j <= 3; j++) {
+  float aa = max(length(dT) + length(eT), 1e-4) * 0.7;
+  float rb = 0.93; float2 bp = pT / rb; float zz = sqrt(saturate(1.0 - dot(bp, bp)));
+  float3 v = float3(bp.x, bp.y, zz);                                         // point on the ball (z toward the pilot)
+  float cr = cos(radians(roll)), sr = sin(radians(roll));
+  v = float3(cr * v.x - sr * v.y, sr * v.x + cr * v.y, v.z);                  // undo roll
+  float cp = cos(radians(pitch)), sp = sin(radians(pitch));
+  v = float3(v.x, cp * v.y - sp * v.z, sp * v.y + cp * v.z);                  // undo pitch
+  float lat = degrees(asin(clamp(v.y, -1.0, 1.0)));
+  float lon = degrees(atan2(v.x, v.z)) + hdg;
+  float pxd = aa * 60.0 / max(zz, 0.2);                                       // grid line width in degrees
+  float gl = 1.0 - smoothstep(0.25 * pxd, 0.25 * pxd + pxd, abs(frac(lat / 10.0 + 0.5) - 0.5) * 10.0);
+  float gm = (1.0 - smoothstep(0.25 * pxd, 0.25 * pxd + pxd, abs(frac(lon / 30.0 + 0.5) - 0.5) * 30.0)) * step(abs(lat), 80.0);
+  float hz = 1.0 - smoothstep(0.6 * pxd, 1.6 * pxd, abs(lat));
+  float3 ball = lat > 0.0 ? float3(0.16, 0.22, 0.3) : float3(0.02, 0.02, 0.022);
+  float3 grid = lat > 0.0 ? float3(0.75, 0.78, 0.8) : float3(0.62, 0.62, 0.6);
+  ball = lerp(ball, grid, max(gl, gm) * 0.85);
+  ball = lerp(ball, float3(0.92, 0.92, 0.9), hz);
+  ball *= 0.35 + 0.65 * zz;                                                   // limb shading of the sphere
+  float onball = 1.0 - smoothstep(rb - 0.02, rb, length(pT));
+  float3 colT = lerp(FACE, ball, onball);
+  float ink = 0.0;
+  for (int j = -3; j <= 3; j++) {                                             // fixed bank scale on the case
     float2 dd = f.dirc(radians(j * (abs(j) == 3 ? 20.0 : 10.0)));
-    ink = max(ink, f.ln(f.seg(pT, dd * 0.84, dd * 0.95), 0.012, aa));
+    ink = max(ink, f.ln(f.seg(pT, dd * 0.94, dd * 1.02), 0.014, aa));
   }
-  float rp = f.ln(f.seg(pT, f.rot(float2(-0.06, 0.7), radians(-roll)), f.rot(float2(0.06, 0.7), radians(-roll))), 0.015, aa);
-  float plane = max(max(f.ln(f.seg(pT, float2(-0.55, 0.0), float2(-0.18, 0.0)), 0.025, aa), f.ln(f.seg(pT, float2(0.18, 0.0), float2(0.55, 0.0)), 0.025, aa)),
-                    max(f.ln(f.seg(pT, float2(-0.18, 0.0), float2(0.0, -0.1)), 0.025, aa), max(f.ln(f.seg(pT, float2(0.18, 0.0), float2(0.0, -0.1)), 0.025, aa), f.ln(length(pT), 0.035, aa))));
-  col = lerp(lerp(ball, INK, max(ink, rp)), float3(0.95, 0.45, 0.05), plane); glow = plane * 0.1;
+  float plane = max(max(f.ln(f.seg(pT, float2(-0.62, 0.0), float2(-0.2, 0.0)), 0.03, aa), f.ln(f.seg(pT, float2(0.2, 0.0), float2(0.62, 0.0)), 0.03, aa)),
+                    f.ln(length(pT), 0.045, aa));
+  col = lerp(lerp(colT, INK, ink), float3(0.95, 0.5, 0.08), plane); glow = plane * 0.08;
 }
 // ---- compass card (rotates), fixed aircraft + lubber line
 if (length(pH) < RB) {
@@ -124,9 +135,10 @@ if (length(pL) < RB) {
     ink = max(ink, f.ln(f.seg(pL, dd * ((i % 5 == 0) ? 0.78 : 0.86), dd * 0.95), 0.012, aa));
     if (i % 5 == 0) ink = max(ink, f.num(Font, FontSampler, pL, dd * 0.63, 0.2, i / 5, 1, dL, eL));
   }
-  float2 win = abs(pL - float2(0.0, -0.33)) - float2(0.34, 0.1);
+  float2 win = abs(pL - float2(0.06, -0.02)) - float2(0.44, 0.14);              // drum counter window (Mirage style)
   float inWin = step(max(win.x, win.y), 0.0);
-  float wv = f.num(Font, FontSampler, pL, float2(0.0, -0.33), 0.15, floor(alt / 10.0 + 0.5) * 10.0, 5, dL, eL);
+  float wv = f.num(Font, FontSampler, pL, float2(0.06, -0.02), 0.2, floor(alt / 10.0 + 0.5) * 10.0, 5, dL, eL);
+  inWin = max(inWin, f.ln(abs(max(win.x, win.y)), 0.012, aa) * 0.0);
   float2 nd = f.dirc(radians(frac(alt / 1000.0) * 360.0));
   float ndl = max(f.ln(f.seg(pL, -nd * 0.12, nd * 0.88), 0.024, aa), f.ln(length(pL), 0.06, aa));
   col = lerp(lerp(lerp(FACE, INK, ink), float3(0.0, 0.0, 0.0), inWin), INK, max(wv * inWin, ndl)); glow = 0.03 * ink;
