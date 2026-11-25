@@ -1,0 +1,57 @@
+; BP_CockpitAudio: cockpit sound mix (same sources as BP_HUDDriver: player BP_MiragePawn + BP_RefuelHose)
+;   beds: ECS (constant), Air (IAS^2), Engine (spool from longitudinal accel, ~1 s lag), Breath (quickens with G),
+;         Wake (grows inside ~40 m of the drogue)
+;   events: 2->3 contact thunk + "Contact", 3->x disconnect + "Disconnect", 1->2 and start "Cleared contact"
+(event EventTick (DeltaSeconds)
+  (bind mp (Utilities|Casting|CastToBP_MiragePawn :Object (Game|GetPlayerPawn :PlayerIndex 0))
+    (:then
+      (bind dt (Math|Float|Max(Float) :A DeltaSeconds :B 0.001))
+      (bind fwd (Transformation|GetActorRightVector :self mp))
+      (bind vel (Class|BPMiragePawn|GetVelocity :self mp))
+      (bind vf (Math|Vector|DotProduct :A vel :B fwd))
+      (bind vz (.z vel))
+      (Variables|Default|SetAC (Math|Interpolation|FInterpTo :Current (Variables|Default|GetAC) :Target (/ (- vf (Variables|Default|GetLastVF)) dt) :DeltaTime DeltaSeconds :InterpSpeed 3.0))
+      (Variables|Default|SetLastVF vf)
+      (Variables|Default|SetGF (Math|Interpolation|FInterpTo :Current (Variables|Default|GetGF) :Target (+ 1.0 (/ (/ (- vz (Variables|Default|GetLastVZ)) dt) 981.0)) :DeltaTime DeltaSeconds :InterpSpeed 3.0))
+      (Variables|Default|SetLastVZ vz)
+      ; engine spool
+      (Variables|Default|SetN (Math|Interpolation|FInterpTo :Current (Variables|Default|GetN) :Target (Math|Float|Clamp(Float) :Value (+ 0.5 (/ (Variables|Default|GetAC) 600.0)) :Min 0.15 :Max 1.0) :DeltaTime DeltaSeconds :InterpSpeed 1.0))
+      (bind n (Variables|Default|GetN))
+      (Audio|SetSoundMixClassOverride :InSoundMixModifier "/Game/AirRefueler/Sim/Audio/SM_Cockpit.SM_Cockpit" :InSoundClass "/Game/AirRefueler/Sim/Audio/SC_Engine.SC_Engine" :Volume (+ 0.1 (* 0.16 n)) :Pitch (+ 0.9 (* 0.2 n)) :FadeInTime 0.1 :bApplyToChildren false)
+      ; canopy airflow ~ q
+      (bind q (Math|Float|Clamp(Float) :Value (/ (+ 285.0 (/ vf 51.44)) 285.0) :Min 0.5 :Max 1.5))
+      (Audio|SetSoundMixClassOverride :InSoundMixModifier "/Game/AirRefueler/Sim/Audio/SM_Cockpit.SM_Cockpit" :InSoundClass "/Game/AirRefueler/Sim/Audio/SC_Air.SC_Air" :Volume (* 0.24 (* q q)) :Pitch (+ 0.9 (* 0.1 q)) :FadeInTime 0.1 :bApplyToChildren false)
+      ; breathing quickens with G
+      (Audio|SetSoundMixClassOverride :InSoundMixModifier "/Game/AirRefueler/Sim/Audio/SM_Cockpit.SM_Cockpit" :InSoundClass "/Game/AirRefueler/Sim/Audio/SC_Breath.SC_Breath" :Volume 1.0 :Pitch (+ 1.0 (* 0.12 (Math|Float|Clamp(Float) :Value (- (Variables|Default|GetGF) 1.0) :Min 0.0 :Max 2.0))) :FadeInTime 0.1 :bApplyToChildren false)
+      (Variables|Default|SetT (+ (Variables|Default|GetT) DeltaSeconds))
+      (bind probe (Transformation|GetWorldLocation :self (Class|BPMiragePawn|GetProbeTip :self mp)))
+      (bind ha (Actor|GetActorOfClass :ActorClass "/Game/AirRefueler/Sim/BP_RefuelHose.BP_RefuelHose_C"))
+      (bind h (Utilities|Casting|CastToBP_RefuelHose :Object ha)
+        (:then
+          (bind st (Class|BPRefuelHose|GetState :self h))
+          (bind rng (/ (Math|Vector|VectorLength (- (Class|BPRefuelHose|GetDP :self h) probe)) 100.0))
+          ; tanker wake
+          (Variables|Default|SetW (Math|Interpolation|FInterpTo :Current (Variables|Default|GetW) :Target (Math|Float|Clamp(Float) :Value (- 1.0 (/ rng 40.0)) :Min 0.0 :Max 1.0) :DeltaTime DeltaSeconds :InterpSpeed 2.0))
+          (bind w (Variables|Default|GetW))
+          (Audio|SetSoundMixClassOverride :InSoundMixModifier "/Game/AirRefueler/Sim/Audio/SM_Cockpit.SM_Cockpit" :InSoundClass "/Game/AirRefueler/Sim/Audio/SC_Wake.SC_Wake" :Volume (* 0.5 w) :Pitch (+ 0.9 (* 0.15 w)) :FadeInTime 0.1 :bApplyToChildren false)
+          ; hose state transitions -> one-shots + tanker calls
+          (bind ls (Variables|Default|GetLastSt))
+          (if (and (== ls 2) (== st 3))
+            (Audio|PlaySound2D :Sound "/Game/AirRefueler/Sim/Audio/S_Contact.S_Contact" :VolumeMultiplier 0.9)
+            (Audio|PlaySound2D :Sound "/Game/AirRefueler/Sim/Audio/V_Contact.V_Contact" :VolumeMultiplier 0.7))
+          (if (and (== ls 3) (!= st 3))
+            (Audio|PlaySound2D :Sound "/Game/AirRefueler/Sim/Audio/S_Disconnect.S_Disconnect" :VolumeMultiplier 0.8)
+            (Audio|PlaySound2D :Sound "/Game/AirRefueler/Sim/Audio/V_Disconnect.V_Disconnect" :VolumeMultiplier 0.7))
+          (if (and (== ls 1) (== st 2))
+            (Audio|PlaySound2D :Sound "/Game/AirRefueler/Sim/Audio/V_ClearedContact.V_ClearedContact" :VolumeMultiplier 0.7))
+          (Variables|Default|SetLastSt st)
+          ; opening call ~3 s after start when the hose is already trailed
+          (if (and (and (> (Variables|Default|GetT) 3.0) (< (Variables|Default|GetAnn) 0.5)) (== st 2))
+            (Variables|Default|SetAnn 1.0)
+            (Audio|PlaySound2D :Sound "/Game/AirRefueler/Sim/Audio/V_ClearedContact.V_ClearedContact" :VolumeMultiplier 0.7)))
+        (:CastFailed)))
+    (:CastFailed)))
+
+(event EventBeginPlay
+  (Audio|PushSoundMixModifier :InSoundMixModifier "/Game/AirRefueler/Sim/Audio/SM_Cockpit.SM_Cockpit")
+  (Audio|SetSoundMixClassOverride :InSoundMixModifier "/Game/AirRefueler/Sim/Audio/SM_Cockpit.SM_Cockpit" :InSoundClass "/Game/AirRefueler/Sim/Audio/SC_Wake.SC_Wake" :Volume 0.0 :Pitch 1.0 :FadeInTime 0.0 :bApplyToChildren false))
