@@ -43,6 +43,8 @@
           (elif (== st 2)
             (if (and (> (Variables|Default|GetCX) -80.0) (< (Variables|Default|GetCR) 12.0))
               (Variables|Default|SetState 3)
+              (Class|BPMiragePawn|SetVelocity :self mp :Velocity (Math|Vector|MakeVector :X 0.0 :Y 0.0 :Z 0.0))
+              (Class|BPMiragePawn|SetKThr :self mp :KThr 0.0)
               (Variables|Default|SetMsg "LOCKED (L) - push in 1.5-9 m for fuel flow, L again to unlock")
               (else
                 (Variables|Default|SetMsg (Utilities|String|Append :A "Not in lock range (L): " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Math|Float|Max(Float) :A 0.0 :B (- -49.5 (Variables|Default|GetCX))))) :B (Utilities|String|Append :A " cm from the coupling (max 30), " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Variables|Default|GetCR))) :B " cm off-axis (max 12)"))))))))))
@@ -89,17 +91,21 @@
           (Variables|Default|SetFlowing false)
           (if (>= (Variables|Default|GetFuel) 3160.0)
             (Variables|Default|SetState 4)
-            (Variables|Default|SetMsg "Disconnected - refuel complete, hose rewinding")
+            (Variables|Default|SetKO (+ t 1.5))
+          (Variables|Default|SetMsg "Disconnected - refuel complete, hose rewinding")
             (else
               (Variables|Default|SetState 2)
-              (Variables|Default|SetMsg "Disconnected (backed out) - try again"))))
+              (Variables|Default|SetKO (+ t 1.5))
+          (Variables|Default|SetMsg "Disconnected (backed out) - try again"))))
         (if (> push 1000.0)
           (Variables|Default|SetFlowing false)
           (Variables|Default|SetState 2)
+          (Variables|Default|SetKO (+ t 1.5))
           (Variables|Default|SetMsg "Too far forward - hose slack, disconnected!"))
         (if (> lat (* 0.2 d))
           (Variables|Default|SetFlowing false)
           (Variables|Default|SetState 2)
+          (Variables|Default|SetKO (+ t 1.5))
           (Variables|Default|SetMsg "Off envelope - probe broke out of the drogue!"))
         (else
           ; ---- free drogue: own integrator; contact = Unreal sweeps of the parachute's 24 convex hulls against the
@@ -151,7 +157,10 @@
                 (Variables|Default|SetMsg "Closure too slow - the probe did not latch (min 0.5 m/s)")
                 (else
                   (Variables|Default|SetState 3)
-                  (Variables|Default|SetMsg "CONTACT! Keep pushing in for the green light")))))))
+                  ; locked: the jet stops (speed + keyboard throttle = 0); any stick/key input moves it again
+                  (Class|BPMiragePawn|SetVelocity :self mp :Velocity (Math|Vector|MakeVector :X 0.0 :Y 0.0 :Z 0.0))
+                  (Class|BPMiragePawn|SetKThr :self mp :KThr 0.0)
+                  (Variables|Default|SetMsg "CONTACT! Push in 1.5-9 m for the green light")))))))
       (Variables|Default|SetLP probe)
       ; hose always taut: cable length = pod-to-drogue distance (slightly shorter -> tension)
       (Class|CableComponent|SetCableLength :self (Variables|Default|GetHose) :CableLength (Math|Float|Max(Float) :A 20.0 :B (* 0.99 (Math|Vector|Distance(Vector) :V1 pod :V2 (Transformation|GetWorldLocation :self drg)))))
