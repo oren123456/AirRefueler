@@ -9,7 +9,7 @@ public class AarsWsTest : ModuleRules
 	public AarsWsTest(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		PrivateDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "Json", "WebSocketNetworking", "Sockets" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "Json", "WebSocketNetworking", "Sockets", "AarsLink" });
 
 		if (bFdProbe)
 		{

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AARS WebSocket console</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --line: #d9dde3; --text: #1d2330; --muted: #6b7280;
+    --accent: #2563eb; --ok: #15803d; --bad: #b91c1c; --warn: #b45309; --in: #0f766e; --out: #6d28d9;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 13px/1.4 system-ui, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); display: flex; flex-direction: column; }
+  header { display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; }
+  input[type=text], input[type=number], select, textarea { font: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: #fff; color: var(--text); }
+  #url { width: 240px; font-family: var(--mono); }
+  button { font: inherit; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .dot.on { background: var(--ok); } .dot.err { background: var(--bad); } .dot.wait { background: var(--warn); }
+  .stats { margin-left: auto; display: flex; gap: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stats b { color: var(--text); font-weight: 600; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) minmax(380px, 1.3fr); gap: 10px; padding: 10px; min-height: 0; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-height: 0; }
+  section h2 { font-size: 13px; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  section h2 .right { margin-left: auto; display: flex; gap: 10px; align-items: center; font-weight: 400; color: var(--muted); }
+  .body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
+  #editor { flex: 1; min-height: 160px; font-family: var(--mono); font-size: 12px; resize: none; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row label { display: flex; gap: 4px; align-items: center; color: var(--muted); }
+  #every { width: 64px; }
+  #sendErr { color: var(--bad); min-height: 1.2em; font-family: var(--mono); font-size: 12px; }
+  pre { margin: 0; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+  #state { flex: 1; overflow: auto; }
+  #log { flex: 1; overflow: auto; font-family: var(--mono); font-size: 12px; }
+  .entry { display: grid; grid-template-columns: 86px 16px 120px 1fr; gap: 6px; padding: 2px 0; border-bottom: 1px solid #f0f1f4; }
+  .entry .t { color: var(--muted); }
+  .entry .d.in { color: var(--in); } .entry .d.out { color: var(--out); } .entry .d.sys { color: var(--warn); }
+  .entry .ty { font-weight: 600; }
+  .entry .m { word-break: break-all; }
+  .entry.err .m, .entry.err .ty { color: var(--bad); }
+  .hint { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AARS WebSocket console</h1>
+  <span class="dot" id="dot"></span>
+  <input type="text" id="url" value="ws://127.0.0.1:8765" spellcheck="false">
+  <button class="primary" id="connect">Connect</button>
+  <label class="hint"><input type="checkbox" id="autoHello" checked> send hello on connect</label>
+  <span id="status" class="hint">disconnected</span>
+  <div class="stats">
+    <span>received <b id="sRx">0</b>/s</span>
+    <span>world.state <b id="sWs">0</b>/s</span>
+    <span>sent <b id="sTx">0</b></span>
+    <span>ping RTT <b id="sRtt">–</b></span>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>Send <span class="right">Ctrl+Enter sends</span></h2>
+    <div class="body">
+      <div class="row">
+        <select id="template" style="flex:1"></select>
+      </div>
+      <textarea id="editor" spellcheck="false"></textarea>
+      <div class="row">
+        <label title="Replace seq / t_ms / ping id with fresh values on every send (Unreal drops pod.hose / boom.drive whose seq is not newer)">
+          <input type="checkbox" id="autoSeq" checked> fresh seq / t_ms / id</label>
+        <label><input type="checkbox" id="repeat"> repeat every <input type="number" id="every" value="16" min="1"> ms</label>
+      </div>
+      <div class="row">
+        <button class="primary" id="send" disabled>Send</button>
+        <button id="ping" disabled>Ping</button>
+        <span class="hint">sent as a text frame</span>
+      </div>
+      <div id="sendErr"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Latest world.state <span class="right"><span id="wsAge"></span><label><input type="checkbox" id="freeze"> freeze</label></span></h2>
+    <div class="body"><pre id="state" class="hint">nothing received yet</pre></div>
+  </section>
+
+  <section>
+    <h2>Log
+      <span class="right">
+        <label><input type="checkbox" id="hideWs" checked> hide world.state</label>
+        <label><input type="checkbox" id="pause"> pause</label>
+        <button id="clear">Clear</button>
+      </span>
+    </h2>
+    <div class="body"><div id="log"></div></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+// Simulator -> World messages from AARS-world-contract-0.2/examples/valid
+const EXAMPLES = {
+ "boom.drive.attached": {
+  "type": "boom.drive",
+  "seq": 80300,
+  "t_ms": 1321817,
+  "el_deg": 30.9,
+  "az_deg": 2.4,
+  "tele_ft": 12.4,
+  "attached": true
+ },
+ "boom.drive": {
+  "type": "boom.drive",
+  "seq": 80223,
+  "t_ms": 1320417,
+  "el_deg": 30.4,
+  "az_deg": 2.1,
+  "tele_ft": 11.8,
+  "attached": false
+ },
+ "boom.fluid": {
+  "type": "boom.fluid",
+  "fuel_pressure_psi": 48,
+  "flow_lb_min": 6000
+ },
+ "camera.lens": {
+  "type": "camera.lens",
+  "pod": "LEFT",
+  "lens": "NARROW"
+ },
+ "clock.set": {
+  "type": "clock.set",
+  "scale": 4,
+  "paused": false
+ },
+ "hello.sim": {
+  "type": "hello",
+  "role": "sim",
+  "name": "aars-sim",
+  "version": "0.2"
+ },
+ "ping": {
+  "type": "ping",
+  "id": "p-101",
+  "t_ms": 606800
+ },
+ "pod.fluid": {
+  "type": "pod.fluid",
+  "pod": "LEFT",
+  "fuel_pressure_psi": 50,
+  "flow_lb_min": 2800
+ },
+ "pod.hose.attached": {
+  "type": "pod.hose",
+  "seq": 36410,
+  "t_ms": 606817,
+  "pod": "LEFT",
+  "payout_ft": 74,
+  "attached": true,
+  "cut": false
+ },
+ "pod.hose.cut": {
+  "type": "pod.hose",
+  "seq": 36411,
+  "t_ms": 606834,
+  "pod": "RIGHT",
+  "payout_ft": 90,
+  "attached": false,
+  "cut": true
+ },
+ "pod.hose": {
+  "type": "pod.hose",
+  "seq": 36409,
+  "t_ms": 606800,
+  "pod": "LEFT",
+  "payout_ft": 31.5,
+  "attached": false,
+  "cut": false
+ },
+ "receiver.add": {
+  "type": "receiver.add",
+  "id": "TIGER1",
+  "receiver_type": "RAFALE",
+  "behind": "LEFT"
+ },
+ "receiver.command": {
+  "type": "receiver.command",
+  "id": "TIGER1",
+  "action": "ASTERN"
+ },
+ "receiver.remove": {
+  "type": "receiver.remove",
+  "id": "TIGER1"
+ },
+ "snapshot.request": {
+  "type": "snapshot.request",
+  "request_id": "snap-7"
+ },
+ "tanker.set": {
+  "type": "tanker.set",
+  "bank_deg": 15,
+  "ap": "OFF"
+ },
+ "world.resume": {
+  "type": "world.resume"
+ },
+ "world.set": {
+  "type": "world.set",
+  "t_ms": 606800,
+  "restore": {
+   "any": "thing the world needs"
+  }
+ }
+};
+const GROUPS = [
+  ["Session", ["hello.sim", "ping"]],
+  ["Systems, 60 Hz", ["pod.hose", "pod.hose.attached", "pod.hose.cut", "boom.drive", "boom.drive.attached"]],
+  ["Systems, 10 Hz", ["pod.fluid", "boom.fluid"]],
+  ["Control", ["camera.lens", "clock.set", "snapshot.request", "world.set", "world.resume"]],
+  ["Demonstrator", ["tanker.set", "receiver.add", "receiver.command", "receiver.remove"]],
+];
+const MAX_LOG = 500;
+
+const $ = id => document.getElementById(id);
+let ws = null, t0 = 0, repeatTimer = null, lastSnapshot = null;
+let rx = 0, wsCount = 0, tx = 0, pingN = 0;
+const pings = new Map();
+const seqs = { "pod.hose": 0, "boom.drive": 0 };
+let latestState = null, latestStateAt = 0, stateDirty = false;
+const logQueue = [];
+
+// ---- templates ----------------------------------------------------------------------------------------------
+for (const [label, names] of GROUPS) {
+  const g = document.createElement("optgroup");
+  g.label = label;
+  for (const n of names) if (EXAMPLES[n]) g.appendChild(new Option(n, n));
+  $("template").appendChild(g);
+}
+$("template").appendChild(new Option("(custom)", ""));
+function loadTemplate() {
+  const name = $("template").value;
+  if (!name) return;
+  let msg = structuredClone(EXAMPLES[name]);
+  if (name === "world.set" && lastSnapshot) msg.restore = lastSnapshot;
+  $("editor").value = JSON.stringify(msg, null, 2);
+  $("sendErr").textContent = "";
+}
+$("template").addEventListener("change", loadTemplate);
+$("template").value = "pod.hose";
+loadTemplate();
+
+// ---- connection ---------------------------------------------------------------------------------------------
+function setStatus(text, cls) {
+  $("status").textContent = text;
+  $("dot").className = "dot " + (cls || "");
+  const on = cls === "on";
+  $("send").disabled = $("ping").disabled = !on;
+  $("connect").textContent = ws ? "Disconnect" : "Connect";
+}
+
+try { const u = localStorage.getItem("aarsConsoleUrl"); if (u) $("url").value = u; } catch {}
+
+function connect() {
+  if (ws) { ws.close(); return; }
+  try { localStorage.setItem("aarsConsoleUrl", $("url").value.trim()); } catch {}
+  let s;
+  try { s = new WebSocket($("url").value.trim()); }   // no subprotocol: Unreal's server rejects unknown ones
+  catch (e) { log("sys", "error", String(e.message || e), true); return; }
+  ws = s;
+  s.binaryType = "arraybuffer";
+  setStatus("connecting…", "wait");
+  s.onopen = () => {
+    t0 = performance.now();
+    seqs["pod.hose"] = 0; seqs["boom.drive"] = 0;
+    setStatus("connected", "on");
+    log("sys", "open", s.url);
+    if ($("autoHello").checked) sendObj(structuredClone(EXAMPLES["hello.sim"]));
+  };
+  s.onmessage = ev => onMessage(ev.data);
+  s.onerror = () => log("sys", "error", "connection error (is Unreal running and listening on this port?)", true);
+  s.onclose = ev => {
+    if (ws === s) ws = null;
+    stopRepeat();
+    setStatus("disconnected" + (ev.code !== 1000 && ev.code !== 1005 ? " (code " + ev.code + ")" : ""), ev.wasClean ? "" : "err");
+    log("sys", "close", "code " + ev.code + (ev.reason ? " " + ev.reason : ""));
+  };
+}
+$("connect").addEventListener("click", connect);
+$("url").addEventListener("keydown", e => { if (e.key === "Enter") connect(); });
+
+// ---- receive ------------------------------------------------------------------------------------------------
+const decoder = new TextDecoder();
+function onMessage(data) {
+  rx++;
+  const text = typeof data === "string" ? data : decoder.decode(data);   // Unreal sends binary frames carrying UTF-8 JSON
+  let msg;
+  try { msg = JSON.parse(text); } catch { log("in", "not JSON", text, true); return; }
+  const type = msg && msg.type || "?";
+  if (type === "world.state") {
+    wsCount++;
+    if (!$("freeze").checked) { latestState = msg; latestStateAt = performance.now(); stateDirty = true; }
+    if ($("hideWs").checked) return;
+  } else if (type === "pong" && pings.has(msg.id)) {
+    const rtt = performance.now() - pings.get(msg.id);
+    pings.delete(msg.id);
+    $("sRtt").textContent = rtt.toFixed(1) + " ms";
+  } else if (type === "snapshot.reply" && msg.restore) {
+    lastSnapshot = msg.restore;   // world.set template uses it
+    if ($("template").value === "world.set") loadTemplate();
+  }
+  log("in", type, text);
+}
+
+// ---- send ---------------------------------------------------------------------------------------------------
+function freshen(msg) {
+  if (!$("autoSeq").checked || !msg || typeof msg !== "object") return msg;
+  const now = Math.max(0, Math.round(performance.now() - t0));
+  if (msg.type in seqs) { msg.seq = ++seqs[msg.type]; msg.t_ms = now; }
+  if (msg.type === "ping") { msg.id = "p-" + (++pingN); msg.t_ms = now; }
+  return msg;
+}
+
+function sendObj(msg) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  freshen(msg);
+  const text = JSON.stringify(msg);
+  if (msg.type === "ping") pings.set(msg.id, performance.now());
+  ws.send(text);   // a string goes out as a TEXT frame (what Unreal's server expects)
+  tx++;
+  $("sTx").textContent = tx;
+  log("out", msg.type || "?", text);
+  return true;
+}
+
+function sendEditor() {
+  let msg;
+  try { msg = JSON.parse($("editor").value); }
+  catch (e) { $("sendErr").textContent = "Not valid JSON: " + e.message; stopRepeat(); return; }
+  $("sendErr").textContent = "";
+  sendObj(msg);
+}
+
+function stopRepeat() {
+  if (repeatTimer) { clearInterval(repeatTimer); repeatTimer = null; }
+  $("send").textContent = "Send";
+}
+
+$("send").addEventListener("click", () => {
+  if (repeatTimer) { stopRepeat(); return; }
+  if ($("repeat").checked) {
+    sendEditor();
+    repeatTimer = setInterval(sendEditor, Math.max(1, +$("every").value || 16));
+    $("send").textContent = "Stop";
+  } else {
+    sendEditor();
+  }
+});
+$("ping").addEventListener("click", () => sendObj({ type: "ping", id: "p-0", t_ms: 0 }));
+$("editor").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!$("send").disabled) $("send").click(); }
+});
+
+// ---- log + state view (drawn at most once per animation frame) -----------------------------------------------
+function log(dir, type, text, isErr) {
+  if ($("pause").checked && dir !== "sys") return;
+  const d = new Date();
+  const t = d.toTimeString().slice(0, 8) + "." + String(d.getMilliseconds()).padStart(3, "0");
+  logQueue.push({ t, dir, type, text, isErr });
+  if (logQueue.length > MAX_LOG) logQueue.splice(0, logQueue.length - MAX_LOG);
+}
+
+function draw() {
+  if (logQueue.length) {
+    const box = $("log");
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+    const frag = document.createDocumentFragment();
+    for (const e of logQueue.splice(0)) {
+      const row = document.createElement("div");
+      row.className = "entry" + (e.isErr ? " err" : "");
+      const arrow = e.dir === "in" ? "↓" : e.dir === "out" ? "↑" : "•";
+      for (const [cls, txt] of [["t", e.t], ["d " + e.dir, arrow], ["ty", e.type], ["m", e.text]]) {
+        const c = document.createElement("span");
+        c.className = cls;
+        c.textContent = txt;
+        row.appendChild(c);
+      }
+      frag.appendChild(row);
+    }
+    box.appendChild(frag);
+    while (box.childElementCount > MAX_LOG) box.firstElementChild.remove();
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  }
+  if (stateDirty) {
+    stateDirty = false;
+    $("state").className = "";
+    $("state").textContent = JSON.stringify(latestState, null, 2);
+  }
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+$("clear").addEventListener("click", () => { logQueue.length = 0; $("log").textContent = ""; });
+
+// ---- rates --------------------------------------------------------------------------------------------------
+setInterval(() => {
+  $("sRx").textContent = rx; $("sWs").textContent = wsCount;
+  rx = 0; wsCount = 0;
+  $("wsAge").textContent = latestState ? "seq " + latestState.seq + " · " + ((performance.now() - latestStateAt) / 1000).toFixed(1) + " s ago" : "";
+}, 1000);
+
+setStatus("disconnected");
+</script>
+</body>
+</html>
