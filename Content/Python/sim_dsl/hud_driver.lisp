@@ -24,8 +24,28 @@
       (Rendering|Material|SetVectorParameterValue :Collection "/Game/AirRefueler/Sim/HUD/MPC_HUD.MPC_HUD" :ParameterName "D2"
         :ParameterValue (Utilities|Struct|MakeLinearColor :R (Variables|Default|GetShowAid) :G (/ (* (Variables|Default|GetAC) 10.0) 981.0) :B (* 5.5 (Variables|Default|GetGF)) :A 0.0))
       (bind probe (Transformation|GetWorldLocation :self (Class|BPMiragePawn|GetProbeTip :self mp)))
-      (bind ha (Actor|GetActorOfClass :ActorClass "/Game/AirRefueler/Sim/BP_RefuelHose.BP_RefuelHose_C"))
-      (bind h (Utilities|Casting|CastToBP_RefuelHose :Object ha)
+      ; nearest drogue to the probe (two pods): index into all BP_RefuelHose actors
+      (bind all (Actor|GetAllActorsOfClass :ActorClass "/Game/AirRefueler/Sim/BP_RefuelHose.BP_RefuelHose_C"))
+      (Variables|Default|SetBestD 1.0e12)
+      (Variables|Default|SetBestI 0)
+      (Variables|Default|SetMaxF 0.0)
+      (for i (range (Utilities|Array|Length all))
+        (bind hh (Utilities|Casting|CastToBP_RefuelHose :Object (Utilities|Array|Get(acopy) all i))
+          (:then
+            (bind dd (Math|Vector|VectorLength (- (Class|BPRefuelHose|GetDP :self hh) probe)))
+            (Variables|Default|SetMaxF (Math|Float|Max(Float) :A (Variables|Default|GetMaxF) :B (Class|BPRefuelHose|GetFuel :self hh)))
+            (if (< dd (Variables|Default|GetBestD))
+              (Variables|Default|SetBestD dd)
+              (Variables|Default|SetBestI i)))
+          (:CastFailed)))
+      ; one shared fuel tank (max over hoses) and the nearest flag (only that hose prints the status line)
+      (for j (range (Utilities|Array|Length all))
+        (bind hj (Utilities|Casting|CastToBP_RefuelHose :Object (Utilities|Array|Get(acopy) all j))
+          (:then
+            (Class|BPRefuelHose|SetFuel :self hj :Fuel (Variables|Default|GetMaxF))
+            (Class|BPRefuelHose|SetNearest :self hj :Nearest (== j (Variables|Default|GetBestI))))
+          (:CastFailed)))
+      (bind h (Utilities|Casting|CastToBP_RefuelHose :Object (Utilities|Array|Get(acopy) all (Variables|Default|GetBestI)))
         (:then
           (bind dp (Class|BPRefuelHose|GetDP :self h))
           (bind fuel (Class|BPRefuelHose|GetFuel :self h))

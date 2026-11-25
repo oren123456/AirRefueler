@@ -223,9 +223,11 @@
       (Rendering|SetVisibility :self (Variables|Default|GetLightGreen) :bNewVisibility (and (== sNow 3) (Variables|Default|GetFlowing)) :bPropagateToChildren false)
       (bind dprobe (Math|Vector|Distance(Vector) :V1 probe :V2 (Transformation|GetWorldLocation :self drg)))
       (bind line (Utilities|String|Append :A (Variables|Default|GetMsg) :B (Utilities|String|Append :A (Utilities|String|Append :A "    |  tip " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Variables|Default|GetCX))) :B (Utilities|String|Append :A " / " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Variables|Default|GetCR))) :B (Utilities|String|Append :A " cm  |  slack " :B (Utilities|String|ToString(Integer) (Math|Float|Round (Variables|Default|GetSL)))))))) :B (Utilities|String|Append :A " cm  |  range " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ dprobe 100.0))) :B (Utilities|String|Append :A " m  |  closure " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (.y vel))) :B (Utilities|String|Append :A " cm/s  |  fuel " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ (Variables|Default|GetFuel) 31.6))) :B "%")))))))))
-      (Development|PrintString :InString "W/S fwd-back   Up/Down throttle (X = 0)   A/D strafe   Space/Ctrl up-down   Shift fast   Mouse look   C recenter   E / btn 2 hose out-in   L lock/unlock   H HUD refuel aid   R restart" :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.7,G=0.7,B=0.7,A=1.0)" :Duration 0.25 :Key "RefuelHelp")
-      (if (Variables|Default|GetFlowing)
-        (Development|PrintString :InString line :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.1,G=1.0,B=0.2,A=1.0)" :Duration 0.25 :Key "RefuelHUD")
-        (else
-          (Development|PrintString :InString line :bPrintToScreen true :bPrintToLog false :TextColor "(R=1.0,G=0.65,B=0.0,A=1.0)" :Duration 0.25 :Key "RefuelHUD"))))
+      ; two pods: BP_HUDDriver flags the hose whose drogue is nearest the probe (and shares fuel); only it prints
+      (if (Variables|Default|GetNearest)
+        (Development|PrintString :InString "W/S fwd-back   Up/Down throttle (X = 0)   A/D strafe   Space/Ctrl up-down   Shift fast   Mouse look   C recenter   E / btn 2 hose out-in   L lock/unlock   H HUD refuel aid   R restart" :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.7,G=0.7,B=0.7,A=1.0)" :Duration 0.25 :Key "RefuelHelp")
+        (if (Variables|Default|GetFlowing)
+          (Development|PrintString :InString line :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.1,G=1.0,B=0.2,A=1.0)" :Duration 0.25 :Key "RefuelHUD")
+          (else
+            (Development|PrintString :InString line :bPrintToScreen true :bPrintToLog false :TextColor "(R=1.0,G=0.65,B=0.0,A=1.0)" :Duration 0.25 :Key "RefuelHUD")))))
     (:CastFailed)))

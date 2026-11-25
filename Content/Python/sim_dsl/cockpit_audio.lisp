@@ -25,8 +25,19 @@
       (Audio|SetSoundMixClassOverride :InSoundMixModifier "/Game/AirRefueler/Sim/Audio/SM_Cockpit.SM_Cockpit" :InSoundClass "/Game/AirRefueler/Sim/Audio/SC_Breath.SC_Breath" :Volume 1.0 :Pitch (+ 1.0 (* 0.12 (Math|Float|Clamp(Float) :Value (- (Variables|Default|GetGF) 1.0) :Min 0.0 :Max 2.0))) :FadeInTime 0.1 :bApplyToChildren false)
       (Variables|Default|SetT (+ (Variables|Default|GetT) DeltaSeconds))
       (bind probe (Transformation|GetWorldLocation :self (Class|BPMiragePawn|GetProbeTip :self mp)))
-      (bind ha (Actor|GetActorOfClass :ActorClass "/Game/AirRefueler/Sim/BP_RefuelHose.BP_RefuelHose_C"))
-      (bind h (Utilities|Casting|CastToBP_RefuelHose :Object ha)
+      ; nearest drogue to the probe (two pods): index into all BP_RefuelHose actors
+      (bind all (Actor|GetAllActorsOfClass :ActorClass "/Game/AirRefueler/Sim/BP_RefuelHose.BP_RefuelHose_C"))
+      (Variables|Default|SetBestD 1.0e12)
+      (Variables|Default|SetBestI 0)
+      (for i (range (Utilities|Array|Length all))
+        (bind hh (Utilities|Casting|CastToBP_RefuelHose :Object (Utilities|Array|Get(acopy) all i))
+          (:then
+            (bind dd (Math|Vector|VectorLength (- (Class|BPRefuelHose|GetDP :self hh) probe)))
+            (if (< dd (Variables|Default|GetBestD))
+              (Variables|Default|SetBestD dd)
+              (Variables|Default|SetBestI i)))
+          (:CastFailed)))
+      (bind h (Utilities|Casting|CastToBP_RefuelHose :Object (Utilities|Array|Get(acopy) all (Variables|Default|GetBestI)))
         (:then
           (bind st (Class|BPRefuelHose|GetState :self h))
           (bind rng (/ (Math|Vector|VectorLength (- (Class|BPRefuelHose|GetDP :self h) probe)) 100.0))
