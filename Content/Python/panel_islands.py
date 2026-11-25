@@ -1,8 +1,8 @@
-"""Locate atlas instrument islands (Saved/ClaudeShots/islands.json, pixel boxes in T_Salon_Diffuse 8192) on the cockpit
+"""Locate atlas instrument islands (Content/Python/panel_islands_atlas.json, pixel boxes in T_Salon_Diffuse 8192) on the cockpit
 meshes: world centre, normal, and the UV directions of face-right / face-up. -> panel_islands.json"""
 import unreal, json
 S = 8192.0
-isl = json.load(open(unreal.Paths.project_saved_dir() + "ClaudeShots/islands.json"))
+isl = json.load(open(unreal.Paths.project_dir() + "Content/Python/panel_islands_atlas.json"))   # islands found in T_Salon_Diffuse (purple outlines)
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 EYE = unreal.Vector(-1727.25, -4609.5, 265.4)
 tris = []
