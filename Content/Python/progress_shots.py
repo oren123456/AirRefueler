@@ -20,6 +20,7 @@ SHOTS = [
     ("08_hose_closeup", "behind8m", "hose", 40.0),
     ("09_hud", "behind8m", "hud", 34.0),
     ("10_hud_contact", "locked", "hud", 34.0),
+    ("11_cockpit_panel", "behind8m", "panel", 70.0),
 ]
 def tick(dt):
     try: _tick(dt)
@@ -100,6 +101,9 @@ def _tick(dt):
         for drv in [a for a in unreal.GameplayStatics.get_all_actors_of_class(w, unreal.Actor) if "BP_HUDDriver" in a.get_class().get_name()]:
             drv.set_editor_property("ShowAid", 1.0 if "contact" in name else 0.0)   # refuel training aid only in the contact shot
         p.set_editor_property("CamYaw", 0.0); p.set_editor_property("CamPitch", -4.5)
+    elif mode == "panel":   # pilot eye looking down at the front panel
+        cam.set_relative_location(st["camrel"], False, True); cam.set_field_of_view(fov)
+        p.set_editor_property("CamYaw", 0.0); p.set_editor_property("CamPitch", -24.0)
     elif mode == "side":
         frame(p, cam, [pod, d, mir + V(0, -700, 0), mir + V(0, 600, 0)], V(-1.0, 0.12, 0.10), fov, 1.05)
     elif mode == "chase":
