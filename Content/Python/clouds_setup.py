@@ -84,8 +84,8 @@ lc.set_editor_property("cast_shadows_on_atmosphere", True)
 # The height fog sat at ground level 6 km below and drew a dark band along the horizon -> removed.
 sky = next(a for a in eas.get_all_level_actors() if isinstance(a, unreal.SkyAtmosphere)).get_component_by_class(unreal.SkyAtmosphereComponent)
 sky.modify()
-sky.set_editor_property("aerial_pespective_view_distance_scale", 4.0)
-sky.set_editor_property("ground_albedo", unreal.Color(r=190, g=196, b=205, a=255))
+sky.set_editor_property("aerial_pespective_view_distance_scale", 2.0)   # see ground_setup.py
+sky.set_editor_property("ground_albedo", unreal.Color(r=115, g=105, b=80, a=255))   # ground_setup.py
 for f in [a for a in eas.get_all_level_actors() if isinstance(a, unreal.ExponentialHeightFog)]:
     eas.destroy_actor(f)
 sun.set_editor_property("intensity", 12000.0)
