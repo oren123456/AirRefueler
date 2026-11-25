@@ -71,8 +71,8 @@
       (if (== (Variables|Default|GetState) 3)
         (bind d (Math|Vector|Distance(Vector) :V1 pod :V2 probe))
         (Variables|Default|SetHoseLen d)
-        ; latched: the probe sits in the coupling at the throat (49.5 cm behind the hub); blend there, no snap
-        (Variables|Default|SetDP (Math|Interpolation|VInterpTo :Current (Variables|Default|GetDP) :Target (+ probe (* (Math|Vector|GetForwardVector :InRot (Math|Rotator|MakeRotfromX :X (- pod probe))) 49.5)) :DeltaTime DeltaSeconds :InterpSpeed 12.0))
+        ; latched: the probe sits 15 cm past the throat in the coupling (34.5 cm behind the hub); blend there, no snap
+        (Variables|Default|SetDP (Math|Interpolation|VInterpTo :Current (Variables|Default|GetDP) :Target (+ probe (* (Math|Vector|GetForwardVector :InRot (Math|Rotator|MakeRotfromX :X (- pod probe))) 34.5)) :DeltaTime DeltaSeconds :InterpSpeed 12.0))
         (Variables|Default|SetDV vel)
         (Transformation|SetWorldLocationAndRotation :self drg :NewLocation (Variables|Default|GetDP) :NewRotation (Math|Rotator|MakeRotfromX :X (- pod (Variables|Default|GetDP))) :bSweep false :bTeleport true)
         (bind push (- 2400.0 d))
