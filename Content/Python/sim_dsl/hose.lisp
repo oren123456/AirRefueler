@@ -141,7 +141,7 @@
       (Class|CableComponent|SetCableLength :self (Variables|Default|GetHose) :CableLength (Math|Float|Max(Float) :A 20.0 :B (* 0.99 (Math|Vector|Distance(Vector) :V1 pod :V2 (Transformation|GetWorldLocation :self drg)))))
       (bind dprobe (Math|Vector|Distance(Vector) :V1 probe :V2 (Transformation|GetWorldLocation :self drg)))
       (bind line (Utilities|String|Append :A (Variables|Default|GetMsg) :B (Utilities|String|Append :A "    |  range " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ dprobe 100.0))) :B (Utilities|String|Append :A " m  |  closure " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (.y vel))) :B (Utilities|String|Append :A " cm/s  |  fuel " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ (Variables|Default|GetFuel) 31.6))) :B "%"))))))))
-      (Development|PrintString :InString "W/S fwd-back   A/D strafe   Space/Ctrl up-down   Shift fast   Mouse look   C recenter   E / btn 2 hose out-in   R restart" :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.7,G=0.7,B=0.7,A=1.0)" :Duration 0.25 :Key "RefuelHelp")
+      (Development|PrintString :InString "W/S fwd-back   Up/Down throttle (X = 0)   A/D strafe   Space/Ctrl up-down   Shift fast   Mouse look   C recenter   E / btn 2 hose out-in   R restart" :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.7,G=0.7,B=0.7,A=1.0)" :Duration 0.25 :Key "RefuelHelp")
       (if (Variables|Default|GetFlowing)
         (Development|PrintString :InString line :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.1,G=1.0,B=0.2,A=1.0)" :Duration 0.25 :Key "RefuelHUD")
         (else

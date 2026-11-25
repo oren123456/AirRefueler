@@ -22,7 +22,14 @@
   ; throttle: 4 m/s linear + 8 m/s cubic -> fine near centre, 12 m/s at full
   (bind thr (+ (* jT 400.0) (* (* (* jT jT) jT) 800.0)))
   (bind sz (Math|Float|Clamp(Float) :Value (- (- kU kN) jV) :Min -1.0 :Max 1.0))
-  (bind target (Math|Vector|MakeVector :X (* sx 250.0) :Y (+ (* (* sy 300.0) boost) thr) :Z (* sz 200.0)))
+  ; keyboard throttle (no joystick): Up/Down = +/- 0.25 m/s held forward speed, X = 0
+  (if (Game|Player|WasInputKeyJustPressed :self pc :Key "Up")
+    (Variables|Default|SetKThr (Math|Float|Min(Float) :A 800.0 :B (+ (Variables|Default|GetKThr) 25.0))))
+  (if (Game|Player|WasInputKeyJustPressed :self pc :Key "Down")
+    (Variables|Default|SetKThr (Math|Float|Max(Float) :A -300.0 :B (- (Variables|Default|GetKThr) 25.0))))
+  (if (Game|Player|WasInputKeyJustPressed :self pc :Key "X")
+    (Variables|Default|SetKThr 0.0))
+  (bind target (Math|Vector|MakeVector :X (* sx 250.0) :Y (+ (+ (* (* sy 300.0) boost) thr) (Variables|Default|GetKThr)) :Z (* sz 200.0)))
   (bind vel (Math|Interpolation|VInterpTo :Current (Variables|Default|GetVelocity) :Target target :DeltaTime DeltaSeconds :InterpSpeed 1.2))
   (Variables|Default|SetVelocity vel)
   (Transformation|AddActorWorldOffset :DeltaLocation (* vel DeltaSeconds) :bSweep false :bTeleport false)
