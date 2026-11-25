@@ -2,6 +2,9 @@
 (event EventTick (DeltaSeconds)
   (bind mp (Utilities|Casting|CastToBP_MiragePawn :Object (Game|GetPlayerPawn :PlayerIndex 0))
     (:then
+      (bind pc (Game|GetPlayerController :PlayerIndex 0))
+      (if (Game|Player|WasInputKeyJustPressed :self pc :Key "H")
+        (Variables|Default|SetShowAid (- 1.0 (Variables|Default|GetShowAid))))
       (bind fwd (Transformation|GetActorRightVector :self mp))
       (bind up (Transformation|GetActorUpVector :self mp))
       (bind vel (Class|BPMiragePawn|GetVelocity :self mp))
@@ -10,9 +13,16 @@
       (bind acc (/ (- vz (Variables|Default|GetLastVZ)) (Math|Float|Max(Float) :A DeltaSeconds :B 0.001)))
       (Variables|Default|SetGF (Math|Interpolation|FInterpTo :Current (Variables|Default|GetGF) :Target (+ 1.0 (/ acc 981.0)) :DeltaTime DeltaSeconds :InterpSpeed 3.0))
       (Variables|Default|SetLastVZ vz)
+      ; longitudinal acceleration (cm/s^2, smoothed) for the acceleration chevrons
+      (bind vf (Math|Vector|DotProduct :A vel :B fwd))
+      (Variables|Default|SetAC (Math|Interpolation|FInterpTo :Current (Variables|Default|GetAC) :Target (/ (- vf (Variables|Default|GetLastVF)) (Math|Float|Max(Float) :A DeltaSeconds :B 0.001)) :DeltaTime DeltaSeconds :InterpSpeed 3.0))
+      (Variables|Default|SetLastVF vf)
       (Rendering|Material|SetVectorParameterValue :Collection "/Game/AirRefueler/Sim/HUD/MPC_HUD.MPC_HUD" :ParameterName "AFwd" :ParameterValue (Math|Conversions|ToLinearColor(Vector) fwd))
       (Rendering|Material|SetVectorParameterValue :Collection "/Game/AirRefueler/Sim/HUD/MPC_HUD.MPC_HUD" :ParameterName "AUp" :ParameterValue (Math|Conversions|ToLinearColor(Vector) up))
       (Rendering|Material|SetVectorParameterValue :Collection "/Game/AirRefueler/Sim/HUD/MPC_HUD.MPC_HUD" :ParameterName "Vel" :ParameterValue (Math|Conversions|ToLinearColor(Vector) vel))
+      ; chevron offset: 10 deg per g of longitudinal acceleration (clamped in the material); incidence ~ 5.5 deg x load factor
+      (Rendering|Material|SetVectorParameterValue :Collection "/Game/AirRefueler/Sim/HUD/MPC_HUD.MPC_HUD" :ParameterName "D2"
+        :ParameterValue (Utilities|Struct|MakeLinearColor :R (Variables|Default|GetShowAid) :G (/ (* (Variables|Default|GetAC) 10.0) 981.0) :B (* 5.5 (Variables|Default|GetGF)) :A 0.0))
       (bind probe (Transformation|GetWorldLocation :self (Class|BPMiragePawn|GetProbeTip :self mp)))
       (bind ha (Actor|GetActorOfClass :ActorClass "/Game/AirRefueler/Sim/BP_RefuelHose.BP_RefuelHose_C"))
       (bind h (Utilities|Casting|CastToBP_RefuelHose :Object ha)
@@ -23,11 +33,12 @@
           (bind toB (- dp probe))
           (bind rng (Math|Float|Max(Float) :A (Math|Vector|VectorLength toB) :B 1.0))
           (bind clo (/ (Math|Vector|DotProduct :A vel :B toB) (* rng 100.0)))
-          (bind flow (Math|Float|SelectFloat :A 1.0 :B 0.0 :bPickA (> fuel (Variables|Default|GetLastFuel))))
+          ; latch the flow flag before LastFuel is updated (pure nodes re-evaluate after the Set)
+          (Variables|Default|SetFL (Math|Float|SelectFloat :A 1.0 :B 0.0 :bPickA (> fuel (+ (Variables|Default|GetLastFuel) 0.001))))
           (Variables|Default|SetLastFuel fuel)
           (Rendering|Material|SetVectorParameterValue :Collection "/Game/AirRefueler/Sim/HUD/MPC_HUD.MPC_HUD" :ParameterName "D0"
             :ParameterValue (Utilities|Struct|MakeLinearColor :R (+ 285.0 (/ (Math|Vector|DotProduct :A vel :B fwd) 51.44)) :G (/ (+ (.z loc) 600000.0) 30.48) :B (Variables|Default|GetGF) :A (Math|Conversions|ToFloat(Integer) st)))
           (Rendering|Material|SetVectorParameterValue :Collection "/Game/AirRefueler/Sim/HUD/MPC_HUD.MPC_HUD" :ParameterName "D1"
-            :ParameterValue (Utilities|Struct|MakeLinearColor :R clo :G (/ rng 100.0) :B fuel :A flow)))
+            :ParameterValue (Utilities|Struct|MakeLinearColor :R clo :G (/ rng 100.0) :B fuel :A (Variables|Default|GetFL))))
         (:CastFailed)))
     (:CastFailed)))

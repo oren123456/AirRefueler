@@ -19,12 +19,12 @@ struct HF {
     return T.SampleGrad(S, t, float2(dx.x, -dx.y) / 8.0, float2(dy.x, -dy.y) / 8.0).r;
   }
   int wc(int w, int i) {
-    int W[96] = { 51,52,47,55,37,36,-1,-1,  52,50,33,41,44,-1,-1,-1,  50,37,33,36,57,-1,-1,-1,  35,47,46,52,33,35,52,-1,
+    int W[104] = { 51,52,47,55,37,36,-1,-1,  52,50,33,41,44,-1,-1,-1,  50,37,33,36,57,-1,-1,-1,  35,47,46,52,33,35,52,-1,
                   50,37,55,41,46,36,-1,-1,  50,46,39,-1,-1,-1,-1,-1,  35,44,51,-1,-1,-1,-1,-1,  38,53,37,44,-1,-1,-1,-1,
-                  43,39,-1,-1,-1,-1,-1,-1,  38,44,47,55,-1,-1,-1,-1,  45,-1,-1,-1,-1,-1,-1,-1,  39,-1,-1,-1,-1,-1,-1,-1 };
+                  43,39,-1,-1,-1,-1,-1,-1,  38,44,47,55,-1,-1,-1,-1,  45,-1,-1,-1,-1,-1,-1,-1,  39,-1,-1,-1,-1,-1,-1,-1,  32,-1,-1,-1,-1,-1,-1,-1 };
     return (i < 0 || i > 7) ? -1 : W[w * 8 + i];
   }
-  int wlen(int w) { int L[12] = { 6, 5, 5, 7, 6, 3, 3, 4, 2, 4, 1, 1 }; return L[w]; }
+  int wlen(int w) { int L[13] = { 6, 5, 5, 7, 6, 3, 3, 4, 2, 4, 1, 1, 1 }; return L[w]; }
   // word w with its left edge at o.x, vertical centre o.y, cell height hc
   float word(Texture2D T, SamplerState S, float2 p, float2 o, float hc, int w, float2 dx, float2 dy) {
     float adv = 0.45 * hc; float2 q = p - o; int k = (int)floor(q.x / adv);
@@ -55,6 +55,10 @@ struct HF {
   }
 };
 HF f;
+// Mirage 2000 NAV layout (ref: simscape.fr Mirage HUD doc + DCS M-2000C): speed/Mach top-left, altitude top-right
+// (thousands+hundreds large, last two digits small), heading tape top-centre with index triangle, full-width horizon,
+// pitch ladder (labels at 10s on both ends, dashed below the horizon), velocity vector with acceleration chevrons,
+// load factor + incidence lower-left. No boxes. The refuelling block is a training aid (H), not on the real HUD.
 float3 F = normalize(AF.xyz);
 float3 R = normalize(cross(AU.xyz, F));
 float3 U = cross(F, R);
@@ -63,21 +67,27 @@ float df = dot(d, F);
 float2 p = degrees(float2(atan2(dot(d, R), df), atan2(dot(d, U), df)));
 float2 dx = ddx(p), dy = ddy(p);
 float aa = max(max(length(float2(dx.x, dy.x)), length(float2(dx.y, dy.y))), 1e-4);
-float w = max(0.025, 0.45 * aa);
-float HC = 0.62; float ADV = 0.45 * HC;
+float w = max(0.022, 0.42 * aa);
+float HC = 0.58; float ADV = 0.45 * HC;
 float s = 0.0;
 
-// ---- flight path marker (air-mass velocity = nose * TAS + motion relative to the tanker)
+// ---- velocity vector (air-mass velocity = nose * TAS + motion relative to the tanker)
 float3 vd = normalize(F * 19800.0 + Vel.xyz);
 float vf = dot(vd, F);
 float2 fp = degrees(float2(atan2(dot(vd, R), vf), atan2(dot(vd, U), vf)));
 float2 q = p - fp;
-s = max(s, f.ln(abs(length(q) - 0.26), w, aa));
-s = max(s, f.ln(f.seg(q, float2(-0.75, 0.0), float2(-0.26, 0.0)), w, aa));
-s = max(s, f.ln(f.seg(q, float2(0.26, 0.0), float2(0.75, 0.0)), w, aa));
-s = max(s, f.ln(f.seg(q, float2(0.0, 0.26), float2(0.0, 0.52)), w, aa));
+s = max(s, f.ln(abs(length(q) - 0.22), w, aa));
+s = max(s, f.ln(f.seg(q, float2(-0.62, 0.0), float2(-0.22, 0.0)), w, aa));
+s = max(s, f.ln(f.seg(q, float2(0.22, 0.0), float2(0.62, 0.0)), w, aa));
+s = max(s, f.ln(f.seg(q, float2(0.0, 0.22), float2(0.0, 0.45)), w, aa));
+// acceleration chevrons '>' '<' either side: above the vector = accelerating, level = constant speed
+float ay = fp.y + clamp(D2.y, -2.0, 2.0);
+float2 cl = p - float2(fp.x - 1.45, ay);
+s = max(s, f.ln(min(f.seg(cl, float2(-0.12, 0.15), float2(0.08, 0.0)), f.seg(cl, float2(-0.12, -0.15), float2(0.08, 0.0))), w, aa));
+float2 cr = p - float2(fp.x + 1.45, ay);
+s = max(s, f.ln(min(f.seg(cr, float2(0.12, 0.15), float2(-0.08, 0.0)), f.seg(cr, float2(0.12, -0.15), float2(-0.08, 0.0))), w, aa));
 
-// ---- horizon + pitch ladder (world referenced)
+// ---- horizon (full width) + pitch ladder (world referenced)
 float3 Fh = normalize(float3(F.x, F.y, 0.0) + float3(1e-5, 0, 0));
 float3 Rh = normalize(cross(float3(0, 0, 1), Fh));
 float elw = degrees(asin(clamp(d.z, -1.0, 1.0)));
@@ -85,8 +95,8 @@ float azw = degrees(atan2(dot(d, Rh), dot(d, Fh)));
 float2 L = float2(azw, elw);
 float2 ldx = ddx(L), ldy = ddy(L);
 float A = abs(azw);
-s = max(s, f.ln(abs(elw), w, aa) * step(1.0, A) * step(A, 6.0));
-for (int k = -3; k <= 3; k++) {
+s = max(s, f.ln(abs(elw), w, aa) * step(A, 7.0));
+for (int k = -4; k <= 4; k++) {
   if (k == 0) continue;
   float P = k * 5.0;
   float dv = elw - P;
@@ -94,50 +104,64 @@ for (int k = -3; k <= 3; k++) {
   if (k < 0) on *= step(frac((A - 1.0) / 0.42), 0.6);
   s = max(s, f.ln(abs(dv), w, aa) * on);
   float tdv = -sign(P) * dv;
-  s = max(s, f.ln(abs(A - 2.3), w, aa) * step(0.0, tdv) * step(tdv, 0.3));
-  s = max(s, f.num(Font, FontSampler, L, float2(2.45, P), HC * 0.8, abs(P), 2, 0, 0, 0, ldx, ldy));
-  s = max(s, f.num(Font, FontSampler, L, float2(-2.45 - 2.0 * 0.45 * HC * 0.8, P), HC * 0.8, abs(P), 2, 0, 0, 0, ldx, ldy));
+  s = max(s, f.ln(abs(A - 2.3), w, aa) * step(0.0, tdv) * step(tdv, 0.25));
+  if (abs(k) % 2 == 0) {
+    float hl = HC * 0.8; float ad = 0.45 * hl;
+    s = max(s, f.num(Font, FontSampler, L, float2(2.4, P), hl, abs(P), 2, 0, 0, 0, ldx, ldy));
+    s = max(s, f.num(Font, FontSampler, L, float2(-2.4 - 2.0 * ad, P), hl, abs(P), 2, 0, 0, 0, ldx, ldy));
+  }
 }
 
-// ---- heading tape (top)
+// ---- heading tape (top centre): labels at 10s, dots at 5s, index triangle below
 float hdg = degrees(atan2(Fh.y, Fh.x)); hdg = hdg < 0.0 ? hdg + 360.0 : hdg;
-float ty = 2.6, sc = 0.3;
-float h0 = floor((hdg - 15.0) / 5.0) * 5.0;
-for (int i = 0; i < 7; i++) {
+float ty = 2.5, sc = 0.13;
+float h0 = floor((hdg - 20.0) / 5.0) * 5.0;
+for (int i = 0; i < 9; i++) {
   float hh = h0 + i * 5.0;
   float x = (hh - hdg) * sc;
-  float inw = step(abs(x), 4.0);
-  bool major = abs(fmod(hh + 3600.0, 10.0)) < 0.5;
-  s = max(s, f.ln(f.seg(p, float2(x, ty), float2(x, ty + (major ? 0.32 : 0.18))), w, aa) * inw);
-  if (major) s = max(s, f.num(Font, FontSampler, p, float2(x - ADV, ty + 0.72), HC, fmod(hh / 10.0 + 36.0, 36.0), 2, 0, 0, 1, dx, dy) * inw);
+  float inw = step(abs(x), 2.0);
+  if (abs(fmod(hh + 3600.0, 10.0)) < 0.5) {
+    s = max(s, f.ln(f.seg(p, float2(x, ty), float2(x, ty + 0.24)), w, aa) * inw);
+    float hl = HC * 0.8;
+    s = max(s, f.num(Font, FontSampler, p, float2(x - 0.45 * hl, ty + 0.6), hl, fmod(hh / 10.0 + 36.0, 36.0), 2, 0, 0, 1, dx, dy) * inw);
+  } else {
+    s = max(s, f.ln(length(p - float2(x, ty + 0.04)), max(w, 0.035), aa) * inw);
+  }
 }
-s = max(s, f.ln(f.seg(p, float2(0.0, ty - 0.04), float2(-0.16, ty - 0.3)), w, aa));
-s = max(s, f.ln(f.seg(p, float2(0.0, ty - 0.04), float2(0.16, ty - 0.3)), w, aa));
+float2 t0 = float2(0.0, ty - 0.08), t1 = float2(-0.12, ty - 0.33), t2 = float2(0.12, ty - 0.33);
+s = max(s, f.ln(min(min(f.seg(p, t0, t1), f.seg(p, t1, t2)), f.seg(p, t2, t0)), w, aa));
 
-// ---- speed (left) / altitude (right) boxes, Mach, G
+// ---- airspeed (kt) + Mach, top-left
 float ias = D0.x;
-s = max(s, f.num(Font, FontSampler, p, float2(-3.55 - 1.5 * ADV, -1.6), HC, ias, 3, 0, 0, 0, dx, dy));
-s = max(s, f.box(p - float2(-3.55, -1.6), float2(1.5 * ADV + 0.12, 0.5 * HC), w, aa));
-s = max(s, f.word(Font, FontSampler, p, float2(-4.25, -2.5), HC * 0.85, 10, dx, dy));
-s = max(s, f.num(Font, FontSampler, p, float2(-4.25 + 1.6 * ADV, -2.5), HC * 0.85, ias / 456.0, 4, 2, 0, 0, dx, dy));
-s = max(s, f.word(Font, FontSampler, p, float2(-4.25, -3.3), HC * 0.85, 11, dx, dy));
-s = max(s, f.num(Font, FontSampler, p, float2(-4.25 + 1.6 * ADV, -3.3), HC * 0.85, D0.z, 3, 1, 0, 0, dx, dy));
+s = max(s, f.num(Font, FontSampler, p, float2(-4.35, 2.9), HC, ias, 3, 0, 0, 0, dx, dy));
+s = max(s, f.num(Font, FontSampler, p, float2(-4.35 + 3.0 * ADV - 4.0 * 0.45 * HC * 0.8, 2.25), HC * 0.8, ias / 456.0, 4, 2, 0, 0, dx, dy));
+// ---- altitude (ft), top-right: thousands+hundreds large, tens small
 float alt = floor(D0.y / 10.0 + 0.5) * 10.0;
-s = max(s, f.num(Font, FontSampler, p, float2(3.35 - 2.5 * ADV, -1.6), HC, alt, 5, 0, 0, 0, dx, dy));
-s = max(s, f.box(p - float2(3.35, -1.6), float2(2.5 * ADV + 0.12, 0.5 * HC), w, aa));
+float sh = HC * 0.7;
+float sx = 4.35 - 2.0 * 0.45 * sh;
+s = max(s, f.num(Font, FontSampler, p, float2(sx, 2.9 - 0.5 * (HC - sh)), sh, fmod(alt, 100.0), 2, 0, 0, 1, dx, dy));
+s = max(s, f.num(Font, FontSampler, p, float2(sx - 0.04 - 3.0 * ADV, 2.9), HC, floor(alt / 100.0 + 0.01), 3, 0, 0, 0, dx, dy));
+// ---- load factor + incidence, lower-left
+float gh = HC * 0.8; float ga = 0.45 * gh;
+s = max(s, f.num(Font, FontSampler, p, float2(-4.4, -1.0), gh, D0.z, 3, 1, 0, 0, dx, dy));
+s = max(s, f.word(Font, FontSampler, p, float2(-4.4 + 3.6 * ga, -1.0), gh, 11, dx, dy));
+s = max(s, f.word(Font, FontSampler, p, float2(-4.4, -1.75), gh, 12, dx, dy));
+s = max(s, f.num(Font, FontSampler, p, float2(-4.4 + ga, -1.75), gh, D2.z, 4, 1, 0, 0, dx, dy));
 
-// ---- refuelling block (bottom)
-int st = (int)(D0.w + 0.5);
-int sw = st == 0 ? 0 : st == 1 ? 1 : st == 2 ? 2 : st == 3 ? (D1.w > 0.5 ? 9 : 3) : 4;
-float blink = (st == 3 && D1.w < 0.5) ? step(0.3, frac(Time * 1.5)) : 1.0;
-s = max(s, f.word(Font, FontSampler, p, float2(-0.5 * f.wlen(sw) * ADV * 1.1, -6.6), HC * 1.1, sw, dx, dy) * blink);
-s = max(s, f.word(Font, FontSampler, p, float2(-4.3, -7.6), HC, 5, dx, dy));
-s = max(s, f.num(Font, FontSampler, p, float2(-4.3 + 3.6 * ADV, -7.6), HC, min(D1.y, 99.9), 4, 1, 0, 0, dx, dy));
-s = max(s, f.word(Font, FontSampler, p, float2(0.95, -7.6), HC, 6, dx, dy));
-s = max(s, f.num(Font, FontSampler, p, float2(0.95 + 3.6 * ADV, -7.6), HC, clamp(D1.x, -9.9, 9.9), 4, 1, 1, 0, dx, dy));
-s = max(s, f.word(Font, FontSampler, p, float2(-2.3, -8.6), HC, 7, dx, dy));
-s = max(s, f.num(Font, FontSampler, p, float2(-2.3 + 4.6 * ADV, -8.6), HC, D1.z, 4, 0, 0, 0, dx, dy));
-s = max(s, f.word(Font, FontSampler, p, float2(-2.3 + 9.0 * ADV, -8.6), HC, 8, dx, dy));
+// ---- refuelling training aid (H): not part of the real Mirage HUD
+if (D2.x > 0.5) {
+  int st = (int)(D0.w + 0.5);
+  int sw = st == 0 ? 0 : st == 1 ? 1 : st == 2 ? 2 : st == 3 ? (D1.w > 0.5 ? 9 : 3) : 4;
+  float blink = (st == 3 && D1.w < 0.5) ? step(0.3, frac(Time * 1.5)) : 1.0;
+  s = max(s, f.word(Font, FontSampler, p, float2(-0.5 * f.wlen(sw) * ADV * 1.1, -6.6), HC * 1.1, sw, dx, dy) * blink);
+  s = max(s, f.word(Font, FontSampler, p, float2(-4.3, -7.6), HC, 5, dx, dy));
+  s = max(s, f.num(Font, FontSampler, p, float2(-4.3 + 3.6 * ADV, -7.6), HC, min(D1.y, 99.9), 4, 1, 0, 0, dx, dy));
+  s = max(s, f.word(Font, FontSampler, p, float2(0.95, -7.6), HC, 6, dx, dy));
+  s = max(s, f.num(Font, FontSampler, p, float2(0.95 + 3.6 * ADV, -7.6), HC, clamp(D1.x, -9.9, 9.9), 4, 1, 1, 0, dx, dy));
+  s = max(s, f.word(Font, FontSampler, p, float2(-2.3, -8.6), HC, 7, dx, dy));
+  s = max(s, f.num(Font, FontSampler, p, float2(-2.3 + 4.6 * ADV, -8.6), HC, D1.z, 4, 0, 0, 0, dx, dy));
+  s = max(s, f.word(Font, FontSampler, p, float2(-2.3 + 9.0 * ADV, -8.6), HC, 8, dx, dy));
+}
 return saturate(s) * step(0.0, df);
 """
 
@@ -158,7 +182,7 @@ def coll(name, y):
 def param(cls, name, val, x, y):
     e = E(cls, x, y); e.set_editor_property("parameter_name", name); e.set_editor_property("default_value", val); return e
 src = {"WP": E(unreal.MaterialExpressionWorldPosition, -1100, -300), "Cam": E(unreal.MaterialExpressionCameraPositionWS, -1100, -200),
-       "AF": coll("AFwd", -100), "AU": coll("AUp", 0), "Vel": coll("Vel", 100), "D0": coll("D0", 200), "D1": coll("D1", 300),
+       "AF": coll("AFwd", -100), "AU": coll("AUp", 0), "Vel": coll("Vel", 100), "D0": coll("D0", 200), "D1": coll("D1", 300), "D2": coll("D2", 350),
        "Time": E(unreal.MaterialExpressionTime, -1100, 400)}
 font = E(unreal.MaterialExpressionTextureObject, -1100, 500); font.set_editor_property("texture", eal.load_asset(HUD + "/T_HUDFont"))
 src["Font"] = font

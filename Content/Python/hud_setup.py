@@ -20,13 +20,19 @@ mp = HUD + "/MPC_HUD"
 mpc = eal.load_asset(mp) if eal.does_asset_exist(mp) else at.create_asset("MPC_HUD", HUD, unreal.MaterialParameterCollection, unreal.MaterialParameterCollectionFactoryNew())
 def vp(n, v):
     p = unreal.CollectionVectorParameter(); p.set_editor_property("parameter_name", n); p.set_editor_property("default_value", unreal.LinearColor(*v)); return p
-mpc.set_editor_property("vector_parameters", [
+WANT = [
     vp("AFwd", (0, 1, 0, 0)),          # aircraft nose direction (world)
     vp("AUp", (0, 0, 1, 0)),           # aircraft up (world)
     vp("Vel", (0, 0, 0, 0)),           # velocity relative to the tanker, cm/s (world)
     vp("D0", (285, 19700, 1, 2)),      # IAS kt, altitude ft, G, hose state
-    vp("D1", (0, 24, 0, 0)),           # closure m/s, range probe->basket m, fuel received kg, -
-])
+    vp("D1", (0, 24, 0, 0)),           # closure m/s, range probe->basket m, fuel kg, fuel flowing 0/1
+    vp("D2", (0, 0, 5.5, 0)),          # refuel aid shown 0/1 (H), acceleration-chevron offset deg, incidence deg, -
+]
+# append missing parameters only: replacing the list would give existing ones new IDs and break material refs
+cur = list(mpc.get_editor_property("vector_parameters"))
+have = [str(x.get_editor_property("parameter_name")) for x in cur]
+cur += [x for x in WANT if str(x.get_editor_property("parameter_name")) not in have]
+mpc.set_editor_property("vector_parameters", cur)
 eal.save_loaded_asset(mpc)
 
 bp_path = HUD + "/BP_HUDDriver"
