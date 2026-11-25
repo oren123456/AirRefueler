@@ -3,7 +3,8 @@
 Separate .uproject (not the AirRefueler game) for the World side of the **AARS ↔ World contract 0.2**:
 Unreal's built-in **WebSocketNetworking** plugin (UE 5.8, libwebsockets 3.0.0) plus the contract messages.
 
-**`Plugins/AarsLink`** — the part meant to move into AirRefueler (copy the folder into `AirRefueler/Plugins`):
+**`AirRefueler/Plugins/AarsLink`** — the link itself, used by the AirRefueler game. AarsWsTest builds a private copy of
+it (`run_tests.py --build` copies the source into `AarsWsTest/Plugins`, git-ignored) so the two projects never mix DLLs.
 - `AarsTypes.h` — every contract message as a Blueprint-visible `USTRUCT` / `UENUM` (units kept in the names: `TipFt`, `IasKt`, …).
 - `AarsCodec.*` — World → Simulator writers (`hello`, `world.state`, `pong`, `snapshot.reply`) and a strict
   Simulator → World parser (unknown/missing fields, wrong types, bad enums and out-of-range values are rejected with the reason).
@@ -11,6 +12,13 @@ Unreal's built-in **WebSocketNetworking** plugin (UE 5.8, libwebsockets 3.0.0) p
 - `AarsLinkServer.*` — WebSocket server: `Receive()` / `Send…()` / `Flush()` per frame, one `On…` event per Simulator message,
   `hello` on connect, automatic `pong`, version check, stale-`seq` drop for `pod.hose`/`boom.drive`, newest connection wins,
   refuses to start if another program already listens on the port (the plugin would otherwise share it silently).
+- `AarsLinkSubsystem` + `AarsLinkSettings` — runs the link while the game plays (PIE or packaged): Project Settings >
+  Plugins > AARS Link (port 9100, bind address, 60 Hz, default tanker, on-screen status). Blueprint events for every
+  Simulator message; `clock.set` drives time dilation / pause; keeps the editor at full rate in the background during PIE.
+
+**AirRefueler side** — `AirRefueler/Source/AirRefueler/AirRefuelerAarsBridge.*`: world.state from the scene (pod hose
+tip and contact from `BP_RefuelHose`, the player's Mirage as receiver `PLAYER`), `pod.hose` drives the hose (payout,
+attached, cut), snapshot/world.set for the player pose and hose state.
 
 **Test code**
 - `Source/AarsWsTest/AarsFakeWorldCommandlet.*` — `-run=AarsFakeWorld`: a World with no 3D scene that speaks the whole contract
@@ -18,13 +26,16 @@ Unreal's built-in **WebSocketNetworking** plugin (UE 5.8, libwebsockets 3.0.0) p
   `UnrealEditor-Cmd.exe AarsWsTest.uproject -run=AarsFakeWorld -port=8765 [-bind=0.0.0.0] [-restore]`
 - `Source/AarsWsTest/AarsWsTestCommandlet.*` — `-run=AarsWsTest`: raw plugin measurements (Tick strategies, Nagle, framing).
 - `Source/AarsWsTest/FdProbe.*` — test-only peek into the plugin's private `FWebSocket` (TCP_NODELAY, send-queue depth).
-- `Tools/ws_console.html` — GUI client: open it in Chrome, connect to Unreal, send any contract message (templates from the
-  contract examples, fresh `seq`/`t_ms`/ping id, optional repeat), see the latest `world.state`, a log, rates and ping RTT.
+- `Tools/ws_console.html` — GUI client: open it in Chrome, connect to Unreal (`ws://127.0.0.1:9100`), send any contract message (templates
+  from the contract examples, fresh `seq`/`t_ms`/ping id, optional repeat), a **hose drum** (trail / stow / cut at a set rate,
+  pod.hose at 60 Hz), the latest `world.state`, a log, rates and ping RTT.
 - `Tools/ws_client.py` — raw-socket WebSocket client (stdlib only) that records frames exactly as received.
 - `Tools/contract_test.py` — plays the Simulator: all valid examples, checks the World's reaction, 14 contract-breaking messages,
   version mismatch, and validates every World message against `messages.schema.json`.
 - `Tools/mini_schema.py` — stdlib JSON-Schema validator for the keywords the contract uses (agrees with `jsonschema` on 3,726
   mutated messages; stricter on one point: `1.0` is not an integer).
+- `Tools/pie_check.py` — checks the running AirRefueler game (PIE) on port 9100: hello, world.state, ping, snapshot, clock.set, schema, rate.
+- `Tools/hose_check.py`, `hose_hold.py`, `cut_check.py` — drive the AirRefueler hose through `pod.hose` and check `tip_ft`.
 - `Tools/run_tests.py` — builds and runs everything. Results go to `Results/` (git-ignored).
 
 The contract is read from `AirRefueler\AARS-world-contract-0.2\AARS-world-contract-0.2` (or `--contract <dir>`).
@@ -46,6 +57,14 @@ The engine is taken from the python.exe path (or `--engine <dir>` / `UE_ENGINE`)
   (hello, world.state ×179, pong, snapshot.reply) valid against the schema, restore in every 2nd world.state.
 - `contract_fixes`: **5/5** — out-of-contract values in `FAarsWorldState` still produce schema-valid `world.state`.
 - `port_busy`: **1/1** — port already taken → the World exits with an error instead of sharing it.
+
+## AirRefueler in PIE (2026-11-25, desktop-gc0ahoc, port 9100)
+
+- `pie_check`: **10/10** — hello, world.state (trailed hose ~79 ft, receiver PLAYER), ping/pong, snapshot.reply
+  (`airrefueler/1`), clock.set 2 → 1, every message schema-valid, 56–60 Hz with the editor in the background, second PIE start reuses the port.
+- `hose_check`: **6/6** — pod.hose drives the hose: hold 78.7 → tip 78.9 ft, reel in → 0 (stowed), out to 50 → 51.9,
+  to 90 ft (past the Blueprint's old 24 m end stop) → 92.8, back to 70 → 68.9 (tip = real drogue position, incl. turbulence).
+- `cut_check`: cut → tip 0, hose and drogue hidden; paying out again afterwards does nothing (cut is permanent).
 
 ## Plugin results (2026-11-24, vrlab3, loopback; same on desktop-gc0ahoc 2026-11-25)
 

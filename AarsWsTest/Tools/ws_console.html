@@ -43,13 +43,19 @@
   .entry .m { word-break: break-all; }
   .entry.err .m, .entry.err .ty { color: var(--bad); }
   .hint { color: var(--muted); font-size: 12px; }
+  #drum { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  #drum h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  #drum input[type=number] { width: 70px; }
+  #drum .big { font: 600 15px var(--mono); font-variant-numeric: tabular-nums; }
+  #drum .readout { display: flex; gap: 18px; color: var(--muted); }
+  #drum .readout b { color: var(--text); }
 </style>
 </head>
 <body>
 <header>
   <h1>AARS WebSocket console</h1>
   <span class="dot" id="dot"></span>
-  <input type="text" id="url" value="ws://127.0.0.1:8765" spellcheck="false">
+  <input type="text" id="url" value="ws://127.0.0.1:9100" spellcheck="false">
   <button class="primary" id="connect">Connect</button>
   <label class="hint"><input type="checkbox" id="autoHello" checked> send hello on connect</label>
   <span id="status" class="hint">disconnected</span>
@@ -80,6 +86,25 @@
         <span class="hint">sent as a text frame</span>
       </div>
       <div id="sendErr"></div>
+      <div id="drum">
+        <h3>Hose drum (sends pod.hose at 60 Hz, like the Simulator)</h3>
+        <div class="row">
+          <label>pod <select id="dPod"><option>LEFT</option><option>RIGHT</option></select></label>
+          <label>rate <input type="number" id="dRate" value="10" min="0.5" step="0.5"> ft/s</label>
+          <label><input type="checkbox" id="dAttached"> attached</label>
+        </div>
+        <div class="row">
+          <button id="dTrail" disabled>Trail to</button><input type="number" id="dTarget" value="90" min="0" step="1"> ft
+          <button id="dStow" disabled>Stow (0 ft)</button>
+          <button id="dCut" disabled title="Contract: once cut, hose and drogue are gone for good">Cut</button>
+          <button id="dStop" disabled>Stop sending</button>
+        </div>
+        <div class="readout">
+          <span>payout <b class="big" id="dPayout">–</b> ft</span>
+          <span>Unreal tip <b class="big" id="dTip">–</b> ft</span>
+          <span>contact <b id="dContact">–</b></span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -92,6 +117,7 @@
     <h2>Log
       <span class="right">
         <label><input type="checkbox" id="hideWs" checked> hide world.state</label>
+        <label title="pod.hose sent by the hose drum (60/s)"><input type="checkbox" id="logDrum"> log drum</label>
         <label><input type="checkbox" id="pause"> pause</label>
         <button id="clear">Clear</button>
       </span>
@@ -259,6 +285,8 @@ function setStatus(text, cls) {
   $("dot").className = "dot " + (cls || "");
   const on = cls === "on";
   $("send").disabled = $("ping").disabled = !on;
+  drumButtons(on);
+  if (!on) { drumStop(); drum.payout = null; }
   $("connect").textContent = ws ? "Disconnect" : "Connect";
 }
 
@@ -364,6 +392,48 @@ $("editor").addEventListener("keydown", e => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!$("send").disabled) $("send").click(); }
 });
 
+// ---- hose drum: streams pod.hose like the Simulator's drum ---------------------------------------------------
+const drum = { timer: null, payout: null, target: 0, cut: false };
+function drumButtons(on) {
+  for (const id of ["dTrail", "dStow", "dCut", "dStop"]) $(id).disabled = !on;
+}
+function drumStart(target, cut) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const pod = $("dPod").value;
+  if (drum.payout === null) {
+    const tip = latestState && latestState.pods && latestState.pods[pod] ? latestState.pods[pod].tip_ft : 0;
+    drum.payout = Math.round(tip * 10) / 10;   // start from where Unreal's hose is
+  }
+  drum.target = Math.max(0, target);
+  drum.cut = !!cut;
+  if (drum.timer) return;
+  let last = performance.now();
+  drum.timer = setInterval(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { drumStop(); return; }
+    const now = performance.now(), dt = (now - last) / 1000; last = now;
+    const rate = Math.max(0.1, +$("dRate").value || 10);
+    const d = drum.target - drum.payout, step = rate * dt;
+    drum.payout = Math.abs(d) <= step ? drum.target : drum.payout + Math.sign(d) * step;
+    const msg = { type: "pod.hose", seq: 0, t_ms: 0, pod: $("dPod").value, payout_ft: Math.round(drum.payout * 1000) / 1000,
+                  attached: $("dAttached").checked, cut: drum.cut };
+    msg.seq = ++seqs["pod.hose"];
+    msg.t_ms = Math.max(0, Math.round(performance.now() - t0));
+    ws.send(JSON.stringify(msg));
+    tx++;
+    $("sTx").textContent = tx;
+    if ($("logDrum").checked) log("out", "pod.hose", JSON.stringify(msg));
+    $("dPayout").textContent = drum.payout.toFixed(1);
+  }, 1000 / 60);
+}
+function drumStop() {
+  if (drum.timer) { clearInterval(drum.timer); drum.timer = null; }
+}
+$("dTrail").addEventListener("click", () => drumStart(+$("dTarget").value || 0, false));
+$("dStow").addEventListener("click", () => drumStart(0, false));
+$("dCut").addEventListener("click", () => drumStart(drum.payout ?? 0, true));
+$("dStop").addEventListener("click", drumStop);
+$("dPod").addEventListener("change", () => { drumStop(); drum.payout = null; $("dPayout").textContent = "–"; });
+
 // ---- log + state view (drawn at most once per animation frame) -----------------------------------------------
 function log(dir, type, text, isErr) {
   if ($("pause").checked && dir !== "sys") return;
@@ -393,6 +463,13 @@ function draw() {
     box.appendChild(frag);
     while (box.childElementCount > MAX_LOG) box.firstElementChild.remove();
     if (atBottom) box.scrollTop = box.scrollHeight;
+  }
+  if (stateDirty && latestState && latestState.pods) {
+    const p = latestState.pods[$("dPod").value];
+    if (p) {
+      $("dTip").textContent = p.tip_ft.toFixed(1);
+      $("dContact").textContent = p.contact ? "YES (" + p.receiver_id + ")" : "no";
+    }
   }
   if (stateDirty) {
     stateDirty = false;

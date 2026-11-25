@@ -7,3 +7,4 @@ DerivedDataCache/
 Results/
 __pycache__/
 Tools/find_lc.py
+Plugins/

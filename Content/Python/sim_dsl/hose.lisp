@@ -86,7 +86,7 @@
         (Variables|Default|SetDP (Math|Interpolation|VInterpTo :Current (Variables|Default|GetDP) :Target (+ probe (* (Math|Vector|GetForwardVector :InRot (Math|Rotator|MakeRotfromX :X (- pod probe))) 34.5)) :DeltaTime DeltaSeconds :InterpSpeed 12.0))
         (Variables|Default|SetDV vel)
         (Transformation|SetWorldLocationAndRotation :self drg :NewLocation (Variables|Default|GetDP) :NewRotation (Math|Rotator|MakeRotfromX :X (- pod (Variables|Default|GetDP))) :bSweep false :bTeleport true)
-        (bind push (- 2400.0 d))
+        (bind push (- (Variables|Default|GetFullLen) d)) ; FullLen: 2400 = 24 m; the AARS link sets it from pod.hose (payout or full length when attached)
         (bind lat (Math|Vector|Distance(Vector) :V1 probe :V2 (+ pod (* (Math|Vector|MakeVector :X 0.0 :Y -0.9877 :Z -0.1564) d))))
         (bind flowing (and (and (> push 150.0) (< push 900.0)) (< (Variables|Default|GetFuel) 3160.0)))
         (Variables|Default|SetFlowing flowing)

@@ -65,7 +65,22 @@ def status(msg):
         f.write("%s %s\n" % (time.strftime("%H:%M:%S"), msg))
 
 
+def sync_plugin():
+    """AarsLink lives in AirRefueler/Plugins. AarsWsTest builds its own copy (git-ignored) so the two projects never
+    share or mix plugin DLLs (an external plugin dir made each project load two copies -> duplicate UClass crash)."""
+    import filecmp, shutil
+    src = os.path.join(os.path.dirname(PROJ_DIR), "Plugins", "AarsLink")
+    dst = os.path.join(PROJ_DIR, "Plugins", "AarsLink")
+    for sub in ("Source",):
+        if os.path.isdir(os.path.join(dst, sub)):
+            shutil.rmtree(os.path.join(dst, sub))
+        shutil.copytree(os.path.join(src, sub), os.path.join(dst, sub))
+    shutil.copy2(os.path.join(src, "AarsLink.uplugin"), os.path.join(dst, "AarsLink.uplugin"))
+    status("plugin synced from " + src)
+
+
 def build():
+    sync_plugin()
     status("build start")
     with open(os.path.join(RES, "build.log"), "w") as log:
         rc = subprocess.call([BUILD_BAT, "AarsWsTestEditor", "Win64", "Development", "-Project=" + UPROJECT, "-WaitMutex", "-NoHotReloadFromIDE"],
