@@ -1,7 +1,7 @@
 ; BP_CockpitAudio: cockpit sound mix (same sources as BP_HUDDriver: player BP_MiragePawn + BP_RefuelHose)
 ;   beds: ECS (constant), Air (IAS^2), Engine (spool from longitudinal accel, ~1 s lag), Breath (quickens with G),
 ;         Wake (grows inside ~40 m of the drogue)
-;   events: 2->3 contact thunk + "Contact", 3->x disconnect + "Disconnect", 1->2 and start "Cleared contact"
+;   events: fuel flow start/stop valve + surge, 2->3 contact thunk + "Contact", 3->x disconnect + "Disconnect", 1->2 and start "Cleared contact"
 (event EventTick (DeltaSeconds)
   (bind mp (Utilities|Casting|CastToBP_MiragePawn :Object (Game|GetPlayerPawn :PlayerIndex 0))
     (:then
@@ -45,6 +45,16 @@
           (if (and (== ls 1) (== st 2))
             (Audio|PlaySound2D :Sound "/Game/AirRefueler/Sim/Audio/V_ClearedContact.V_ClearedContact" :VolumeMultiplier 0.7))
           (Variables|Default|SetLastSt st)
+          ; fuel flow start / stop (debounced ~0.25 s so the push-in window edge can't chatter)
+          (bind fl (Class|BPRefuelHose|GetFlowing :self h))
+          (Variables|Default|SetFT (Math|Float|Clamp(Float) :Value (+ (Variables|Default|GetFT) (select fl DeltaSeconds (- DeltaSeconds))) :Min 0.0 :Max 0.3))
+          (bind ft (Variables|Default|GetFT))
+          (if (and (not (Variables|Default|GetLastFlow)) (>= ft 0.25))
+            (Variables|Default|SetLastFlow true)
+            (Audio|PlaySound2D :Sound "/Game/AirRefueler/Sim/Audio/S_FlowStart.S_FlowStart" :VolumeMultiplier 0.8))
+          (if (and (Variables|Default|GetLastFlow) (<= ft 0.0))
+            (Variables|Default|SetLastFlow false)
+            (Audio|PlaySound2D :Sound "/Game/AirRefueler/Sim/Audio/S_FlowStop.S_FlowStop" :VolumeMultiplier 0.8))
           ; opening call ~3 s after start when the hose is already trailed
           (if (and (and (> (Variables|Default|GetT) 3.0) (< (Variables|Default|GetAnn) 0.5)) (== st 2))
             (Variables|Default|SetAnn 1.0)

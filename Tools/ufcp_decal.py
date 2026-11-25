@@ -8,6 +8,7 @@ sx, sy = N / W, N / H
 FB = "/usr/local/lib/python3.13/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Bold.ttf"
 def P(s, t): return (s * sx, (H - t) * sy)
 rng = np.random.default_rng(7)
+WHITE = (0.80, 0.79, 0.74)
 # ---------------- layers (float)
 col = np.zeros((N, N, 3), np.float32)
 hgt = np.zeros((N, N), np.float32)
@@ -30,8 +31,10 @@ chip = (ed < 0.06 + 0.12 * n3) & (n2 + 0.4 * n4 > 0.8)
 col[chip] = col[chip] * 0.35 + np.array([0.33, 0.33, 0.31], np.float32) * 0.65; rgh[chip] = 0.38
 def L(mask_img): return np.asarray(mask_img, np.float32) / 255.0
 def canvas(): im = Image.new("L", (N, N), 0); return im, ImageDraw.Draw(im)
+leg = np.zeros((N, N), np.float32)   # backlit legend mask (white paint) -> mask B
 def blend(m, c, a=1.0):
     m = m * a; col[:] = col * (1 - m[..., None]) + np.array(c, np.float32) * m[..., None]
+    if tuple(c) == tuple(WHITE): leg[:] = np.maximum(leg, m)
 # ---------------- knobs (geometry) -> grime rings + finger wear
 toggles = [(1.41, 5.91), (3.86, 5.91), (10.07, 5.91), (3.86, 3.01), (9.97, 2.90)]
 rotaries = [(1.47, 2.87, 0.70), (12.33, 4.30, 0.72)]
@@ -56,7 +59,6 @@ im, d = canvas(); d.rounded_rectangle([P(*m0), P(*m1)], radius=int(0.18 * sx), f
 bez = L(im.filter(ImageFilter.GaussianBlur(2)))
 blend(bez, (0.018, 0.018, 0.017)); hgt += 0.8 * bez; rgh = rgh * (1 - bez) + 0.78 * bez
 lab = []   # (text, s, t, size_cm, colour, anchor)
-WHITE = (0.80, 0.79, 0.74)
 def window(t0, t1, value, label):
     im, d = canvas(); d.rectangle([P(6.45, t1), P(8.6, t0)], fill=255)
     w = L(im); blend(w, (0.004, 0.008, 0.005)); hgt[:] -= 0.5 * w; rgh[:] = rgh * (1 - w) + 0.2 * w
@@ -185,7 +187,7 @@ gx = ndimage.sobel(hs, 1) / 8.0; gy = ndimage.sobel(hs, 0) / 8.0
 k = 2.5
 nv = np.dstack([-gx * k, gy * k, np.ones_like(hs)]); nv /= np.linalg.norm(nv, axis=2, keepdims=True)
 Image.fromarray(((nv * 0.5 + 0.5) * 255 + 0.5).astype(np.uint8)).save("/tmp/ufcp/T_UFCP_Normal.png")
-mk = np.dstack([np.clip(emi, 0, 1), np.clip(rgh, 0.03, 1), np.zeros_like(emi)])
+mk = np.dstack([np.clip(emi, 0, 1), np.clip(rgh, 0.03, 1), np.clip(ndimage.gaussian_filter(leg, 1.0) * 1.2, 0, 1)])
 Image.fromarray((mk * 255 + 0.5).astype(np.uint8)).save("/tmp/ufcp/T_UFCP_Mask.png")
 prev = Image.fromarray((rgba[..., :3] * 255).astype(np.uint8)).resize((1024, 1024), Image.LANCZOS)
 prev.save("/tmp/ufcp/preview.jpg", quality=90)

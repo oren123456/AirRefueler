@@ -140,3 +140,32 @@ if src:
         e = a + hiss_len; tail = int(0.12 * SR)                                         # squelch tail (burst of louder hiss)
         out[e - 400:e - 400 + tail] += signal.sosfilt(signal.butter(2, [800, 5000], "bandpass", fs=SR, output="sos"), rng.standard_normal(tail)) * np.exp(-np.arange(tail) / (0.035 * SR)) * 0.35
         save("V_" + name.title().replace("_", ""), out, 0.7)
+# ---------- fuel flow start: valve clack, pressure surge whump, rush that settles, a few gurgles
+def lp(x, hz): return signal.sosfilt(signal.butter(2, hz, "low", fs=SR, output="sos"), x)
+def bpf(x, lo, hi): return signal.sosfilt(signal.butter(2, [lo, hi], "bandpass", fs=SR, output="sos"), x)
+m = int(2.8 * SR); t = np.arange(m) / SR
+clack = np.zeros(m); k = int(0.02 * SR)
+for hz, dec, a in ((1350, 0.025, 0.5), (2900, 0.015, 0.3), (720, 0.04, 0.35)):
+    clack[:m] += a * np.sin(2 * np.pi * hz * t) * np.exp(-t / dec)
+clack += bpf(rng.standard_normal(m), 800, 5000) * np.exp(-t / 0.006) * 0.6
+d = int(0.08 * SR); tt = t[:m - d]
+whump = np.zeros(m); whump[d:] = np.sin(2 * np.pi * np.cumsum(55 - 15 * (1 - np.exp(-tt / 0.1))) / SR) * (1 - np.exp(-tt / 0.03)) * np.exp(-tt / 0.35)
+rush_env = np.clip((t - 0.08) / 0.35, 0, 1) * (0.35 + 0.65 * np.exp(-np.clip(t - 0.45, 0, None) / 0.6)) * np.clip((2.8 - t) / 0.8, 0, 1)
+rush = lp(bpf(rng.standard_normal(m), 120, 2500), 1800) * rush_env
+gur = np.zeros(m)
+for _ in range(9):
+    a0 = int(rng.uniform(0.4, 2.2) * SR); L = int(rng.uniform(0.03, 0.08) * SR); tl = np.arange(L) / SR
+    f0 = rng.uniform(160, 380); gur[a0:a0 + L] += np.sin(2 * np.pi * f0 * (1 + 1.5 * tl / tl[-1]) * tl) * np.sin(np.pi * tl / tl[-1]) * rng.uniform(0.1, 0.25)
+save("S_FlowStart", 0.7 * clack + 1.0 * whump + 0.5 * rush / (np.std(rush) * 4 + 1e-9) + gur, 0.75)
+# ---------- fuel flow stop: valve clunk, water-hammer thud, short decaying rush, pipe ticks
+m = int(2.0 * SR); t = np.arange(m) / SR
+clunk = np.sin(2 * np.pi * 110 * t) * np.exp(-t / 0.05) * 0.6 + bpf(rng.standard_normal(m), 300, 2500) * np.exp(-t / 0.01) * 0.5
+for hz, dec, a in ((980, 0.03, 0.3), (2150, 0.02, 0.15)): clunk += a * np.sin(2 * np.pi * hz * t) * np.exp(-t / dec)
+d = int(0.03 * SR); tt = t[:m - d]
+hammer = np.zeros(m); hammer[d:] = np.sin(2 * np.pi * 46 * tt) * np.exp(-tt / 0.12) * (1 - np.exp(-tt / 0.008))
+tail = lp(bpf(rng.standard_normal(m), 150, 2200), 1500); tail = tail / (np.std(tail) * 4) * np.exp(-t / 0.35) * np.clip(t / 0.02, 0, 1)
+ticks = np.zeros(m)
+for a0 in (0.45, 0.8, 1.3):
+    i0 = int(a0 * SR); L = int(0.02 * SR); tl = np.arange(L) / SR
+    ticks[i0:i0 + L] += np.sin(2 * np.pi * rng.uniform(1800, 3200) * tl) * np.exp(-tl / 0.003) * 0.12
+save("S_FlowStop", clunk + 1.0 * hammer + 0.35 * tail + ticks, 0.7)
