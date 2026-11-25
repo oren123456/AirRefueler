@@ -18,7 +18,7 @@ struct G {
   float fbm(float2 p) { float s = 0, a = 0.5; for (int k = 0; k < 5; k++) { s += a * vn(p); p = p * 2.03 + 17.1; a *= 0.5; } return s / 0.97; }
 };
 G g;
-float2 p = WP.xy / 100.0;                                   // metres
+float2 p = WP.xy / 100.0 + float2(0.0, T * GS);           // metres; scrolls -Y at the flight speed (MPC_Flight)
 float dist = length(WP - Cam) / 100.0;
 float2 fw = max(abs(ddx(p)), abs(ddy(p))); float px = max(max(fw.x, fw.y), 0.01);
 float far = saturate(max(smoothstep(40.0, 160.0, px), smoothstep(15000.0, 60000.0, dist)));
@@ -70,12 +70,16 @@ cu.set_editor_property("code", CODE)
 cu.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
 cu.set_editor_property("description", "ProceduralGround")
 ins = []
-for n in ["WP", "Cam"]:
+for n in ["WP", "Cam", "T", "GS"]:
     ci = unreal.CustomInput(); ci.set_editor_property("input_name", n); ins.append(ci)
 cu.set_editor_property("inputs", ins)
 mel.connect_material_expressions(wp, "", cu, "WP")
 cam = E(unreal.MaterialExpressionCameraPositionWS, -900, 150)
 mel.connect_material_expressions(cam, "", cu, "Cam")
+tm = E(unreal.MaterialExpressionTime, -900, 250); mel.connect_material_expressions(tm, "", cu, "T")
+gs = E(unreal.MaterialExpressionCollectionParameter, -900, 350)
+gs.set_editor_property("collection", eal.load_asset("/Game/AirRefueler/Sim/MPC_Flight")); gs.set_editor_property("parameter_name", "Speed")
+mel.connect_material_expressions(gs, "", cu, "GS")
 m.set_editor_property("two_sided", True)
 rough = E(unreal.MaterialExpressionConstant, -300, 200); rough.set_editor_property("r", 0.95)
 mel.connect_material_property(cu, "", unreal.MaterialProperty.MP_BASE_COLOR)
