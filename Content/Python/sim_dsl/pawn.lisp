@@ -45,6 +45,8 @@
     (Variables|Default|SetCamPitch 0.0))
   (if (or (Game|Player|WasInputKeyJustPressed :self pc :Key "E") (Game|Player|WasInputKeyJustPressed :self pc :Key "GenericUSBController_Button2"))
     (Variables|Default|SetExtendCount (+ (Variables|Default|GetExtendCount) 1)))
+  (if (or (Game|Player|WasInputKeyJustPressed :self pc :Key "L") (Game|Player|WasInputKeyJustPressed :self pc :Key "GenericUSBController_Button4"))
+    (Variables|Default|SetLockCount (+ (Variables|Default|GetLockCount) 1)))
   (if (Game|Player|WasInputKeyJustPressed :self pc :Key "R")
     (Development|ExecuteConsoleCommand :Command "RestartLevel"))
   (if (Game|Player|WasInputKeyJustPressed :self pc :Key "J")

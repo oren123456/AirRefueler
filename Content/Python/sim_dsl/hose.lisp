@@ -30,6 +30,22 @@
           (elif (or (== st 1) (== st 2))
             (Variables|Default|SetState 4)
             (Variables|Default|SetMsg "Hose rewinding...  (E / button 2 = trail)"))))
+      ; manual lock: L / joystick button 4 locks when the probe is inside the basket (within 80 cm of the coupling,
+      ; 12 cm of the axis; CX/CR from the last frame), at any closure speed. Pressing it again unlocks.
+      (bind lk (Class|BPMiragePawn|GetLockCount :self mp))
+      (if (!= lk (Variables|Default|GetLastLock))
+        (Variables|Default|SetLastLock lk)
+        (if (== st 3)
+          (Variables|Default|SetState 2)
+          (Variables|Default|SetFlowing false)
+          (Variables|Default|SetKO (+ t 1.5))
+          (Variables|Default|SetMsg "UNLOCKED (L) - back out of the basket")
+          (elif (== st 2)
+            (if (and (> (Variables|Default|GetCX) -80.0) (< (Variables|Default|GetCR) 12.0))
+              (Variables|Default|SetState 3)
+              (Variables|Default|SetMsg "LOCKED (L) - push in 1.5-9 m for fuel flow, L again to unlock")
+              (else
+                (Variables|Default|SetMsg (Utilities|String|Append :A "Not in lock range (L): " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Math|Float|Max(Float) :A 0.0 :B (- -49.5 (Variables|Default|GetCX))))) :B (Utilities|String|Append :A " cm from the coupling (max 30), " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (Variables|Default|GetCR))) :B " cm off-axis (max 12)"))))))))))
       (if (== st 0)
         (Variables|Default|SetHoseLen (Math|Interpolation|FInterpTo :Current (Variables|Default|GetHoseLen) :Target 30.0 :DeltaTime DeltaSeconds :InterpSpeed 2.0)))
       (if (== st 1)
@@ -141,7 +157,7 @@
       (Class|CableComponent|SetCableLength :self (Variables|Default|GetHose) :CableLength (Math|Float|Max(Float) :A 20.0 :B (* 0.99 (Math|Vector|Distance(Vector) :V1 pod :V2 (Transformation|GetWorldLocation :self drg)))))
       (bind dprobe (Math|Vector|Distance(Vector) :V1 probe :V2 (Transformation|GetWorldLocation :self drg)))
       (bind line (Utilities|String|Append :A (Variables|Default|GetMsg) :B (Utilities|String|Append :A "    |  range " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ dprobe 100.0))) :B (Utilities|String|Append :A " m  |  closure " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (.y vel))) :B (Utilities|String|Append :A " cm/s  |  fuel " :B (Utilities|String|Append :A (Utilities|String|ToString(Integer) (Math|Float|Round (/ (Variables|Default|GetFuel) 31.6))) :B "%"))))))))
-      (Development|PrintString :InString "W/S fwd-back   Up/Down throttle (X = 0)   A/D strafe   Space/Ctrl up-down   Shift fast   Mouse look   C recenter   E / btn 2 hose out-in   R restart" :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.7,G=0.7,B=0.7,A=1.0)" :Duration 0.25 :Key "RefuelHelp")
+      (Development|PrintString :InString "W/S fwd-back   Up/Down throttle (X = 0)   A/D strafe   Space/Ctrl up-down   Shift fast   Mouse look   C recenter   E / btn 2 hose out-in   L lock/unlock   R restart" :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.7,G=0.7,B=0.7,A=1.0)" :Duration 0.25 :Key "RefuelHelp")
       (if (Variables|Default|GetFlowing)
         (Development|PrintString :InString line :bPrintToScreen true :bPrintToLog false :TextColor "(R=0.1,G=1.0,B=0.2,A=1.0)" :Duration 0.25 :Key "RefuelHUD")
         (else
