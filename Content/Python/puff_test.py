@@ -19,16 +19,16 @@ def _tick(dt):
     if p is None or not puffs: return
     cam = comp(p, "PilotCam"); eye = cam.get_world_location()
     if not st["placed"] and now - st["t0"] > 2.0:
-        a = puffs[0]; a.set_actor_scale3d(unreal.Vector(500, 500, 375))
-        a.set_actor_location(eye + unreal.Vector(0, 150000, 0), False, True); st["puff"] = a; st["placed"] = True; st["tp"] = now
+        a = puffs[0]; a.set_actor_scale3d(unreal.Vector(3600, 3600, 3600))
+        a.set_actor_location(eye + unreal.Vector(0, 650000, -5000), False, True); st["puff"] = a; st["placed"] = True; st["tp"] = now
         p.set_editor_property("CamYaw", 0.0); p.set_editor_property("CamPitch", 0.0); cam.set_field_of_view(90.0)
     if st["placed"]:
         a = st["puff"]; dy = a.get_actor_location().y - eye.y
         st["out"].append("t=%.2f dt=%.1fms puff_dy=%.0f m" % (now - st["tp"], dt * 1000, dy / 100))
-        for name, d in (("a_approach", 900), ("b_close", 350), ("c_inside", 0), ("d_after", -400)):
+        for name, d in (("a_approach", 4500), ("b_close", 1900), ("c_inside", 0), ("d_after", -2200)):
             if name not in st["shots"] and dy / 100 < d:
                 unreal.SystemLibrary.execute_console_command(w, "HighResShot 1"); st["shots"].append(name); unreal.log("[PuffTest] " + name)
-        if dy / 100 < -700 or now - st["tp"] > 25:
+        if dy / 100 < -2500 or now - st["tp"] > 40:
             open(unreal.Paths.project_saved_dir() + "ClaudeShots/puff_test.txt", "w").write("\n".join(st["out"]))
             unreal.unregister_slate_post_tick_callback(st["h"]); les.editor_request_end_play(); unreal.log("[PuffTest] done")
 st["h"] = unreal.register_slate_post_tick_callback(tick)

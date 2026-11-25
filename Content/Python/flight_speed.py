@@ -22,7 +22,7 @@ bp = "/Game/AirRefueler/Sim/Clouds/BP_CloudStream"
 if eal.does_asset_exist(bp):
     unreal.BlueprintEditorLibrary.compile_blueprint(eal.load_asset(bp))
     cdo = unreal.get_default_object(eal.load_asset(bp).generated_class()); cdo.set_editor_property("Speed", v * 100.0)
-    if cdo.get_editor_property("ThroughChance") == 0.0: cdo.set_editor_property("ThroughChance", 0.15)   # ~1 in 7 puffs on the formation's track
+    cdo.set_editor_property("ThroughChance", 0.1)   # 1 in 10 respawns on the formation track (~every 3-4 min)
     for a in eas.get_all_level_actors():
         if a.get_class().get_name().startswith("BP_CloudStream"):
             a.set_editor_property("Speed", v * 100.0); a.set_editor_property("ThroughChance", cdo.get_editor_property("ThroughChance"))

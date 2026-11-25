@@ -6,7 +6,7 @@ D = "/Game/AirRefueler/Sim/Clouds"
 eal = unreal.EditorAssetLibrary; at = unreal.AssetToolsHelpers.get_asset_tools(); mel = unreal.MaterialEditingLibrary
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 log = lambda s: unreal.log("[Puffs] " + s)
-N_PUFFS = 14
+N_PUFFS = 6
 
 CODE = r"""
 struct CP {
@@ -15,8 +15,24 @@ struct CP {
     return lerp(lerp(lerp(h(i), h(i + float3(1, 0, 0)), f.x), lerp(h(i + float3(0, 1, 0)), h(i + float3(1, 1, 0)), f.x), f.y),
                 lerp(lerp(h(i + float3(0, 0, 1)), h(i + float3(1, 0, 1)), f.x), lerp(h(i + float3(0, 1, 1)), h(i + float3(1, 1, 1)), f.x), f.y), f.z); }
   float fbm(float3 p) { return 0.5 * n3(p) + 0.27 * n3(p * 2.07 + 7.3) + 0.15 * n3(p * 4.31 + 1.7) + 0.08 * n3(p * 8.9 + 3.1); }
+  // cumulus in the unit sphere: 6 seeded lobes (tallest near the middle) on a flat base, eroded billowy edges
+  float dens(float3 q, float3 wp, float R, float sd, float t, bool lite) {
+    float m = -1.0;
+    for (int k = 0; k < 6; k++) {
+      float2 o = (float2(h(float3(sd, k, 1.0)), h(float3(sd, k, 2.0))) - 0.5) * 1.15;
+      float tall = 1.0 - length(o);
+      float3 c = float3(o, -0.12 + 0.3 * tall * h(float3(sd, k, 3.0)));
+      float r = 0.2 + 0.16 * h(float3(sd, k, 4.0)) + 0.08 * tall;
+      m = max(m, 1.0 - length((q - c) * float3(1.0, 1.0, 1.15)) / r);
+    }
+    float3 np = wp / (R * 0.16) + sd * 57.0 + float3(0.0, 0.0, t * 0.01);
+    float n = lite ? 0.62 * n3(np) + 0.38 * n3(np * 2.07 + 7.3) : fbm(np);
+    float d = saturate(m * 3.0 - (1.0 - n) * 1.25 + 0.35);                  // erosion only eats into the edges
+    return d * smoothstep(-0.24, -0.16, q.z) * (1.0 - smoothstep(0.82, 0.97, length(q) * 0.9));   // flat base, fade before the mesh
+  }
 };
 if (TS > 0.0) return float4(0, 0, 0, 0);            // back faces only (works from outside and inside the sphere)
+R *= 0.5774;                                         // ObjectRadius = bounding-box sphere = sqrt(3) x the sphere mesh radius
 CP c;
 float3 rd = normalize(WP - Cam); float3 oc = Cam - C;
 float b = dot(oc, rd), cc = dot(oc, oc) - R * R, hh = b * b - cc;
@@ -24,21 +40,20 @@ if (hh <= 0.0) return float4(0, 0, 0, 0);
 hh = sqrt(hh); float t0 = max(-b - hh, 0.0), t1 = -b + hh;
 t1 = min(t1, SD / max(dot(rd, CF), 1e-3));          // stop at opaque geometry (aircraft, cockpit)
 if (t1 <= t0) return float4(0, 0, 0, 0);
-float seed = c.h(floor(C / 997.0));
+float seed = floor(c.h(floor(float3(C.x, 0.0, C.z) / 997.0)) * 1000.0);   // x/z only: constant while the cloud travels along Y
 float jit = frac(sin(dot(rd, float3(12.9898, 78.233, 45.164)) * 43758.5453));
-const int N = 22; float dt = (t1 - t0) / N; float Tr = 1.0; float3 acc = float3(0, 0, 0);
+const int N = 20; float dt = (t1 - t0) / N; float Tr = 1.0; float3 acc = float3(0, 0, 0);
 for (int i = 0; i < N; i++) {
   float3 p = Cam + rd * (t0 + (i + jit) * dt);
-  float3 q = (p - C) / R;
-  float r = length(q * float3(1.0, 1.0, 1.45) + float3(0.0, 0.0, 0.12));
-  float n = c.fbm(p / (R * 0.42) + seed * 57.0 + float3(0.0, 0.0, Time * 0.015));
-  // billowy lobes + eroded wispy edges, flat-ish base
-  float d = saturate((1.0 - r) * 2.0 + (n - 0.52) * 2.6) * smoothstep(-0.66, -0.5, q.z);
+  float3 q = (p - C) / (R * 0.9);                    // dens() fades to 0 before the (low-poly) sphere silhouette
+  float d = c.dens(q, p - C, R, seed, Time, false);  // noise attached to the cloud, not to the world
   if (d > 0.002) {
-    float ext = d * Sigma * dt;
-    float lit = saturate(0.3 + 0.7 * (dot(normalize(q + 1e-4), L) * 0.5 + 0.5)) * (0.75 + 0.25 * saturate(q.z + 0.5));
-    float3 col = Amb + Sun * lit;
-    float a = 1.0 - exp(-ext);
+    // self-shadowing: one cheap sample toward the sun
+    float l1 = c.dens(q + L * 0.12, p - C + L * R * 0.09, R, seed, Time, true);
+    float sh = exp(-l1 * 0.12 * R * Sigma * 0.6);
+    float pw = 1.0 - exp(-d * 4.0);                                   // powder: dark edges facing the sun
+    float3 col = Amb * (0.55 + 0.45 * saturate(q.z * 1.5 + 0.5)) + Sun * sh * (0.35 + 0.65 * pw);
+    float a = 1.0 - exp(-d * Sigma * dt);
     acc += Tr * a * col; Tr *= 1.0 - a;
     if (Tr < 0.01) break;
   }
@@ -101,17 +116,17 @@ pawn = next(a for a in eas.get_all_level_actors() if a.get_class().get_name().st
 pl = pawn.get_actor_location()
 for a in eas.get_all_level_actors():
     if a.actor_has_tag("CloudPuff") or a.get_actor_label() == "CloudStream": eas.destroy_actor(a)
-sphere = eal.load_asset("/Engine/BasicShapes/Sphere")
+sphere = eal.load_asset("/Engine/BasicShapes/Sphere")   # radius 50 cm
 random.seed(7)
 for i in range(N_PUFFS):
-    sc = random.uniform(250.0, 700.0)    # sphere mesh radius 50 cm -> 125..350 m
-    loc = unreal.Vector(pl.x + random.uniform(-80000, 80000), pl.y + random.uniform(250000, 1500000), pl.z + random.uniform(-25000, 25000))
+    sc = random.uniform(3000.0, 7000.0)   # uniform scale (the raymarch assumes a sphere); visible cloud ~0.8-1.8 km radius
+    loc = unreal.Vector(pl.x + random.choice((-1, 1)) * random.uniform(150000, 600000), pl.y + random.uniform(300000, 3000000), pl.z + random.uniform(-60000, 30000))
     a = eas.spawn_actor_from_class(unreal.StaticMeshActor, loc)
     a.set_actor_label("CloudPuff_%02d" % i); a.tags = [unreal.Name("CloudPuff")]
     smc = a.static_mesh_component; smc.set_mobility(unreal.ComponentMobility.MOVABLE)
     smc.set_static_mesh(sphere); smc.set_material(0, m)
     smc.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION); smc.set_editor_property("cast_shadow", False)
-    a.set_actor_scale3d(unreal.Vector(sc, sc, sc * 0.75))
+    a.set_actor_scale3d(unreal.Vector(sc, sc, sc))
     a.set_folder_path("Clouds")
 cs = eas.spawn_actor_from_class(bp.generated_class(), pl); cs.set_actor_label("CloudStream"); cs.set_folder_path("Clouds")
 unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).save_current_level()
