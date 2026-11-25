@@ -1,11 +1,27 @@
 """Builds AarsWsTest and runs the WebSocketNetworking scenarios. Run with Unreal's python.exe:
-   "D:/Epic Games/UE_5.8/Engine/Binaries/ThirdParty/Python3/Win64/python.exe" run_tests.py [--build] [--only name,...]"""
+   <Engine>/Binaries/ThirdParty/Python3/Win64/python.exe run_tests.py [--build] [--only name,...] [--engine <dir>]"""
 import json, os, subprocess, sys, time, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ_DIR = os.path.dirname(HERE)
 UPROJECT = os.path.join(PROJ_DIR, "AarsWsTest.uproject")
-ENGINE = r"D:\Epic Games\UE_5.8\Engine"
+def find_engine():
+    """Engine dir: --engine <dir>, UE_ENGINE env var, or the usual UE 5.8 install locations."""
+    if "--engine" in sys.argv:
+        return sys.argv[sys.argv.index("--engine") + 1]
+    if os.environ.get("UE_ENGINE"):
+        return os.environ["UE_ENGINE"]
+    # the python.exe running this script is usually Unreal's own: <Engine>/Binaries/ThirdParty/Python3/Win64/python.exe
+    exe = os.path.abspath(sys.executable)
+    if os.sep.join(["Binaries", "ThirdParty", "Python3"]) in exe:
+        return exe.split(os.sep + "Binaries" + os.sep)[0]
+    for c in (r"C:\Program Files\Epic Games\UE_5.8\Engine", r"D:\Epic Games\UE_5.8\Engine", r"D:\Program Files\Epic Games\UE_5.8\Engine"):
+        if os.path.isdir(c):
+            return c
+    raise SystemExit("Unreal Engine 5.8 not found: pass --engine <dir> or set UE_ENGINE")
+
+
+ENGINE = find_engine()
 BUILD_BAT = os.path.join(ENGINE, "Build", "BatchFiles", "Build.bat")
 EDITOR_CMD = os.path.join(ENGINE, "Binaries", "Win64", "UnrealEditor-Cmd.exe")
 RES = os.path.join(PROJ_DIR, "Results")
@@ -78,6 +94,7 @@ def main():
     args = sys.argv[1:]
     if os.path.exists(STATUS):
         os.remove(STATUS)
+    status("engine " + ENGINE)
     if "--build" in args and not build():
         status("DONE (build failed)")
         return

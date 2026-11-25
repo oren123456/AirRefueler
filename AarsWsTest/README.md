@@ -10,8 +10,9 @@ AARS ↔ World contract 0.2. Not part of the AirRefueler game; separate .uprojec
 
 Run (Unreal's Python):
 ```
-"D:\Epic Games\UE_5.8\Engine\Binaries\ThirdParty\Python3\Win64\python.exe" Tools\run_tests.py --build
+"<Engine>\Binaries\ThirdParty\Python3\Win64\python.exe" Tools\run_tests.py --build
 ```
+The engine is taken from the python.exe path (or `--engine <dir>` / `UE_ENGINE`).
 `--build` uses `-NoHotReloadFromIDE` so it builds while another editor of the same engine has Live Coding active.
 
 ## Results (2026-11-24, vrlab3, loopback)
