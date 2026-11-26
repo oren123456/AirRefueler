@@ -49,6 +49,12 @@
   #drum .big { font: 600 15px var(--mono); font-variant-numeric: tabular-nums; }
   #drum .readout { display: flex; gap: 18px; color: var(--muted); }
   #drum .readout b { color: var(--text); }
+  .col { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .col > section { flex: 1; }
+  .col > #video { flex: 0 0 auto; }
+  #vUrl { flex: 1; min-width: 160px; font-family: var(--mono); }
+  #vBox { aspect-ratio: 16 / 9; background: #111; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #9ca3af; }
+  #vBox iframe { width: 100%; height: 100%; border: 0; display: block; }
 </style>
 </head>
 <body>
@@ -108,10 +114,23 @@
     </div>
   </section>
 
+  <div class="col">
+  <section id="video">
+    <h2>Video (Pixel Streaming 2 player) <span class="right"><button id="vTab" title="Open the player in its own tab">Open in tab</button></span></h2>
+    <div class="body">
+      <div class="row">
+        <input type="text" id="vUrl" value="http://127.0.0.1" spellcheck="false" title="Player page served by the Pixel Streaming 2 signalling server">
+        <button class="primary" id="vShow">Show</button>
+      </div>
+      <div id="vBox">no video</div>
+    </div>
+  </section>
+
   <section>
     <h2>Latest world.state <span class="right"><span id="wsAge"></span><label><input type="checkbox" id="freeze"> freeze</label></span></h2>
     <div class="body"><pre id="state" class="hint">nothing received yet</pre></div>
   </section>
+  </div>
 
   <section>
     <h2>Log
@@ -481,6 +500,38 @@ function draw() {
 requestAnimationFrame(draw);
 
 $("clear").addEventListener("click", () => { logQueue.length = 0; $("log").textContent = ""; });
+
+// ---- video: embeds the Pixel Streaming 2 player page (signalling server must be running) -----------------------
+try { const u = localStorage.getItem("aarsConsoleVideoUrl"); if (u) $("vUrl").value = u; } catch {}
+function playerUrl() {
+  let u = $("vUrl").value.trim();
+  if (!/^https?:\/\//i.test(u)) u = "http://" + u;
+  try { localStorage.setItem("aarsConsoleVideoUrl", $("vUrl").value.trim()); } catch {}
+  const url = new URL(u);
+  // player flags: connect and play on load, muted so the browser allows autoplay
+  for (const f of ["AutoConnect", "AutoPlayVideo", "StartVideoMuted"]) if (!url.searchParams.has(f)) url.searchParams.set(f, "true");
+  return url.href;
+}
+function videoShow() {
+  const box = $("vBox");
+  if (box.querySelector("iframe")) {   // removing the iframe closes the WebRTC session
+    box.textContent = "no video";
+    $("vShow").textContent = "Show";
+    return;
+  }
+  let src;
+  try { src = playerUrl(); } catch (e) { box.textContent = "bad URL: " + e.message; return; }
+  const f = document.createElement("iframe");
+  f.src = src;
+  f.allow = "autoplay; fullscreen";
+  box.textContent = "";
+  box.appendChild(f);
+  $("vShow").textContent = "Hide";
+  log("sys", "video", src);
+}
+$("vShow").addEventListener("click", videoShow);
+$("vUrl").addEventListener("keydown", e => { if (e.key === "Enter") { if ($("vBox").querySelector("iframe")) videoShow(); videoShow(); } });
+$("vTab").addEventListener("click", () => { try { window.open(playerUrl(), "_blank"); } catch (e) { $("vBox").textContent = "bad URL: " + e.message; } });
 
 // ---- rates --------------------------------------------------------------------------------------------------
 setInterval(() => {
