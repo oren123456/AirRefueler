@@ -55,6 +55,7 @@
   #vUrl { flex: 1; min-width: 160px; font-family: var(--mono); }
   #vBox { aspect-ratio: 16 / 9; background: #111; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #9ca3af; }
   #vBox iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 </style>
 </head>
 <body>
@@ -122,6 +123,13 @@
         <input type="text" id="vUrl" value="http://127.0.0.1" spellcheck="false" title="Player page served by the Pixel Streaming 2 signalling server">
         <button class="primary" id="vShow">Show</button>
       </div>
+      <div class="row seg" title="Sent to Unreal over the AARS WebSocket (Connect first)">
+        <span class="hint">camera</span>
+        <button id="vSelL" disabled>LEFT</button><button id="vSelR" disabled>RIGHT</button>
+        <span class="hint" style="margin-left:10px">lens</span>
+        <button id="vLensW" disabled>WIDE</button><button id="vLensN" disabled>NARROW</button>
+        <span class="hint" title="camera.select is not in contract 0.2">camera.select = proposed</span>
+      </div>
       <div id="vBox">no video</div>
     </div>
   </section>
@@ -176,6 +184,10 @@ const EXAMPLES = {
   "type": "camera.lens",
   "pod": "LEFT",
   "lens": "NARROW"
+ },
+ "camera.select": {
+  "type": "camera.select",
+  "pod": "LEFT"
  },
  "clock.set": {
   "type": "clock.set",
@@ -265,7 +277,7 @@ const GROUPS = [
   ["Session", ["hello.sim", "ping"]],
   ["Systems, 60 Hz", ["pod.hose", "pod.hose.attached", "pod.hose.cut", "boom.drive", "boom.drive.attached"]],
   ["Systems, 10 Hz", ["pod.fluid", "boom.fluid"]],
-  ["Control", ["camera.lens", "clock.set", "snapshot.request", "world.set", "world.resume"]],
+  ["Control", ["camera.select", "camera.lens", "clock.set", "snapshot.request", "world.set", "world.resume"]],
   ["Demonstrator", ["tanker.set", "receiver.add", "receiver.command", "receiver.remove"]],
 ];
 const MAX_LOG = 500;
@@ -305,6 +317,7 @@ function setStatus(text, cls) {
   const on = cls === "on";
   $("send").disabled = $("ping").disabled = !on;
   drumButtons(on);
+  for (const id of ["vSelL", "vSelR", "vLensW", "vLensN"]) $(id).disabled = !on;
   if (!on) { drumStop(); drum.payout = null; }
   $("connect").textContent = ws ? "Disconnect" : "Connect";
 }
@@ -377,6 +390,7 @@ function sendObj(msg) {
   const text = JSON.stringify(msg);
   if (msg.type === "ping") pings.set(msg.id, performance.now());
   ws.send(text);   // a string goes out as a TEXT frame (what Unreal's server expects)
+  noteCamera(msg);
   tx++;
   $("sTx").textContent = tx;
   log("out", msg.type || "?", text);
@@ -532,6 +546,29 @@ function videoShow() {
 $("vShow").addEventListener("click", videoShow);
 $("vUrl").addEventListener("keydown", e => { if (e.key === "Enter") { if ($("vBox").querySelector("iframe")) videoShow(); videoShow(); } });
 $("vTab").addEventListener("click", () => { try { window.open(playerUrl(), "_blank"); } catch (e) { $("vBox").textContent = "bad URL: " + e.message; } });
+
+// camera.select (proposed extension, not in contract 0.2) and camera.lens for the selected pod
+const cam = { pod: "RIGHT", lens: { LEFT: "WIDE", RIGHT: "WIDE" } };
+function camShow() {
+  $("vSelL").classList.toggle("on", cam.pod === "LEFT");
+  $("vSelR").classList.toggle("on", cam.pod === "RIGHT");
+  $("vLensW").classList.toggle("on", cam.lens[cam.pod] === "WIDE");
+  $("vLensN").classList.toggle("on", cam.lens[cam.pod] === "NARROW");
+}
+// keep the buttons in step with every camera.select / camera.lens sent (buttons or editor)
+function noteCamera(msg) {
+  if (msg.type === "camera.select" && (msg.pod === "LEFT" || msg.pod === "RIGHT")) cam.pod = msg.pod;
+  else if (msg.type === "camera.lens" && msg.pod in cam.lens && (msg.lens === "WIDE" || msg.lens === "NARROW")) cam.lens[msg.pod] = msg.lens;
+  else return;
+  camShow();
+}
+function camSelect(pod) { sendObj({ type: "camera.select", pod }); }
+function camLens(lens) { sendObj({ type: "camera.lens", pod: cam.pod, lens }); }
+$("vSelL").addEventListener("click", () => camSelect("LEFT"));
+$("vSelR").addEventListener("click", () => camSelect("RIGHT"));
+$("vLensW").addEventListener("click", () => camLens("WIDE"));
+$("vLensN").addEventListener("click", () => camLens("NARROW"));
+camShow();
 
 // ---- rates --------------------------------------------------------------------------------------------------
 setInterval(() => {

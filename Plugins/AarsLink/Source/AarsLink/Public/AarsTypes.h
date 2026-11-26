@@ -33,7 +33,9 @@ UENUM(BlueprintType)
 enum class EAarsInboundType : uint8
 {
 	None, Hello, Ping, PodHose, PodFluid, BoomDrive, BoomFluid, CameraLens, ClockSet,
-	SnapshotRequest, WorldSet, WorldResume, TankerSet, ReceiverAdd, ReceiverCommand, ReceiverRemove
+	SnapshotRequest, WorldSet, WorldResume, TankerSet, ReceiverAdd, ReceiverCommand, ReceiverRemove,
+	/** PROPOSED extension, not in contract 0.2: which camera goes on the (single) video stream. */
+	CameraSelect
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -213,6 +215,15 @@ struct AARSLINK_API FAarsCameraLens
 	UPROPERTY(BlueprintReadOnly, Category = "AARS") EAarsLens Lens = EAarsLens::Wide;
 };
 
+/** camera.select - PROPOSED extension, not in contract 0.2: the camera shown on the video stream.
+ *  {"type": "camera.select", "pod": "LEFT" | "RIGHT"} */
+USTRUCT(BlueprintType)
+struct AARSLINK_API FAarsCameraSelect
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly, Category = "AARS") EAarsPod Pod = EAarsPod::Left;
+};
+
 USTRUCT(BlueprintType)
 struct AARSLINK_API FAarsClockSet
 {
@@ -288,6 +299,7 @@ struct AARSLINK_API FAarsInbound
 	FAarsBoomDrive BoomDrive;
 	FAarsBoomFluid BoomFluid;
 	FAarsCameraLens CameraLens;
+	FAarsCameraSelect CameraSelect;
 	FAarsClockSet ClockSet;
 	FAarsSnapshotRequest SnapshotRequest;
 	FAarsWorldSet WorldSet;

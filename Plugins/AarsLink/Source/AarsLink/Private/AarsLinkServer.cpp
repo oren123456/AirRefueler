@@ -225,6 +225,7 @@ void FAarsLinkServer::Dispatch(const FAarsInbound& M)
 	case EAarsInboundType::BoomDrive: OnBoomDrive.Broadcast(M.BoomDrive); break;
 	case EAarsInboundType::BoomFluid: OnBoomFluid.Broadcast(M.BoomFluid); break;
 	case EAarsInboundType::CameraLens: OnCameraLens.Broadcast(M.CameraLens); break;
+	case EAarsInboundType::CameraSelect: OnCameraSelect.Broadcast(M.CameraSelect); break;
 	case EAarsInboundType::ClockSet: OnClockSet.Broadcast(M.ClockSet); break;
 	case EAarsInboundType::SnapshotRequest: OnSnapshotRequest.Broadcast(M.SnapshotRequest); break;
 	case EAarsInboundType::WorldSet: OnWorldSet.Broadcast(M.WorldSet); break;

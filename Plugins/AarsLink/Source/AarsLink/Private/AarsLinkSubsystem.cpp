@@ -130,6 +130,11 @@ void UAarsLinkSubsystem::StartServer()
 		Note(FString::Printf(TEXT("camera.lens %s %s"), AarsCodec::ToString(M.Pod), AarsCodec::ToString(M.Lens)));
 		OnCameraLens.Broadcast(M);
 	});
+	L.OnCameraSelect.AddLambda([this](const FAarsCameraSelect& M)
+	{
+		Note(FString::Printf(TEXT("camera.select %s"), AarsCodec::ToString(M.Pod)));
+		OnCameraSelect.Broadcast(M);
+	});
 	L.OnClockSet.AddLambda([this](const FAarsClockSet& M)
 	{
 		Note(FString::Printf(TEXT("clock.set scale %g%s"), M.Scale, M.bPaused ? TEXT(", paused") : TEXT("")));

@@ -19,6 +19,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAarsPodFluidEvent, const FAarsPodFl
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAarsBoomDriveEvent, const FAarsBoomDrive&, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAarsBoomFluidEvent, const FAarsBoomFluid&, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAarsCameraLensEvent, const FAarsCameraLens&, Message);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAarsCameraSelectEvent, const FAarsCameraSelect&, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAarsClockSetEvent, const FAarsClockSet&, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAarsSnapshotRequestEvent, const FAarsSnapshotRequest&, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAarsWorldSetEvent, const FAarsWorldSet&, Message);
@@ -59,6 +60,8 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "AARS") FAarsBoomDriveEvent OnBoomDrive;
 	UPROPERTY(BlueprintAssignable, Category = "AARS") FAarsBoomFluidEvent OnBoomFluid;
 	UPROPERTY(BlueprintAssignable, Category = "AARS") FAarsCameraLensEvent OnCameraLens;
+	/** camera.select - proposed extension, not in contract 0.2. */
+	UPROPERTY(BlueprintAssignable, Category = "AARS") FAarsCameraSelectEvent OnCameraSelect;
 	UPROPERTY(BlueprintAssignable, Category = "AARS") FAarsClockSetEvent OnClockSet;
 	UPROPERTY(BlueprintAssignable, Category = "AARS") FAarsSnapshotRequestEvent OnSnapshotRequest;
 	UPROPERTY(BlueprintAssignable, Category = "AARS") FAarsWorldSetEvent OnWorldSet;

@@ -75,6 +75,7 @@ public:
 	TMulticastDelegate<void(const FAarsBoomDrive&)> OnBoomDrive;
 	TMulticastDelegate<void(const FAarsBoomFluid&)> OnBoomFluid;
 	TMulticastDelegate<void(const FAarsCameraLens&)> OnCameraLens;
+	TMulticastDelegate<void(const FAarsCameraSelect&)> OnCameraSelect;
 	TMulticastDelegate<void(const FAarsClockSet&)> OnClockSet;
 	TMulticastDelegate<void(const FAarsSnapshotRequest&)> OnSnapshotRequest;
 	TMulticastDelegate<void(const FAarsWorldSet&)> OnWorldSet;

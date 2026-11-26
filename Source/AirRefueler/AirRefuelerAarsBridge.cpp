@@ -1,6 +1,19 @@
 #include "AirRefuelerAarsBridge.h"
 
 #include "AarsLinkSubsystem.h"
+#include "CineCameraActor.h"
+#include "CineCameraComponent.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "Engine/SceneCapture2D.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "IPixelStreaming2Module.h"
+#include "IPixelStreaming2Streamer.h"
+#include "PixelStreaming2VideoProducers.h"
+#include "RenderingThread.h"
+#include "Engine/Engine.h"
+#include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
+#include "InputCoreTypes.h"
 #include "Components/SceneComponent.h"
 #include "Dom/JsonObject.h"
 #include "Engine/World.h"
@@ -108,6 +121,10 @@ void UAirRefuelerAarsBridge::OnWorldBeginPlay(UWorld& InWorld)
 	if (!L) return;
 	Link = L;
 	FindHoses();
+	SetupPodCameras();
+	SetupStream();
+	L->OnCameraLens.AddDynamic(this, &UAirRefuelerAarsBridge::HandleCameraLens);
+	L->OnCameraSelect.AddDynamic(this, &UAirRefuelerAarsBridge::HandleCameraSelect);
 	L->OnBeforeSendWorldState.AddUObject(this, &UAirRefuelerAarsBridge::FillWorldState);
 	TWeakObjectPtr<UAirRefuelerAarsBridge> Weak(this);
 	L->RestoreProvider = [Weak]() { return Weak.IsValid() ? Weak->MakeRestore() : FString(TEXT("{}")); };
@@ -124,6 +141,8 @@ TStatId UAirRefuelerAarsBridge::GetStatId() const
 void UAirRefuelerAarsBridge::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	PollKeys();
+	FeedStreamer();
 	UAarsLinkSubsystem* L = Link.Get();
 	if (!L) return;
 	for (FHose& H : Hoses)
@@ -217,7 +236,9 @@ void UAirRefuelerAarsBridge::FindHoses()
 		if (!It->GetClass()->GetName().StartsWith(TEXT("BP_RefuelHose"))) continue;
 		FHose H;
 		H.Actor = *It;
-		H.Pod = It->GetActorNameOrLabel().Contains(TEXT("Left")) ? EAarsPod::Left : EAarsPod::Right;
+		// Scene axes: noses +Y, aircraft right = -X. (The labels are not reliable: "SimHose_LeftPod" hangs under the
+		// tanker's RIGHT wing, "SimHose_LeftWing" under the left one.)
+		H.Pod = It->GetActorLocation().X < 0.0 ? EAarsPod::Right : EAarsPod::Left;
 		Hoses.Add(H);
 	}
 }
@@ -364,4 +385,226 @@ bool UAirRefuelerAarsBridge::ApplyRestore(const FString& Json)
 		}
 	}
 	return true;
+}
+
+// ---- pod cameras + the one video stream ----------------------------------------------------------------------------
+
+namespace
+{
+	constexpr float SensorWidthMm = 23.76f; // 16:9 digital film
+	const TCHAR* PodName(EAarsPod Pod) { return Pod == EAarsPod::Left ? TEXT("Left") : TEXT("Right"); }
+	float FocalMm(EAarsLens Lens) { return Lens == EAarsLens::Narrow ? UAirRefuelerAarsBridge::NarrowFocalMm : UAirRefuelerAarsBridge::WideFocalMm; }
+	/** Horizontal FOV of a lens on the pod camera sensor (12 mm = 89 deg, 50 mm = 27 deg). */
+	float HFovDeg(EAarsLens Lens) { return FMath::RadiansToDegrees(2.f * FMath::Atan(SensorWidthMm * 0.5f / FocalMm(Lens))); }
+
+	void ConfigureCamera(ACineCameraActor* Cam, float Focal)
+	{
+		UCineCameraComponent* C = Cam->GetCineCameraComponent();
+		C->Filmback.SensorWidth = SensorWidthMm;
+		C->Filmback.SensorHeight = 13.365f;
+		C->Filmback.RecalcSensorAspectRatio();
+		C->SetConstraintAspectRatio(false);
+		C->FocusSettings.FocusMethod = ECameraFocusMethod::Disable; // everything sharp, like a pod camera
+		C->CurrentAperture = 22.f;
+		C->SetCurrentFocalLength(Focal);
+	}
+}
+
+void UAirRefuelerAarsBridge::SetupPodCameras()
+{
+	PodCameras.Reset();
+	UWorld* W = GetWorld();
+	for (const FHose& H : Hoses)
+	{
+		AActor* HoseActor = H.Actor.Get();
+		if (!HoseActor || FindCamera(H.Pod)) continue;
+		FPodCamera PC;
+		PC.Pod = H.Pod;
+		const FString Label = FString::Printf(TEXT("PodCam_%s"), PodName(H.Pod));
+		for (TActorIterator<ACineCameraActor> It(W); It; ++It)
+		{
+			if (It->GetActorNameOrLabel() == Label) { PC.Camera = *It; break; }
+		}
+		if (!PC.Camera.IsValid())
+		{
+			// Default placement: 1 m aft, 0.6 m outboard and 0.4 m below the pod exit (the hose actor's origin),
+			// aimed at where the drogue hangs when trailed (24 m aft, 9 deg droop). Aft = -Y, outboard = away from X = 0.
+			const FVector Exit = HoseActor->GetActorLocation();
+			const double Out = Exit.X < 0.0 ? -1.0 : 1.0;
+			const FVector Loc = Exit + FVector(60.0 * Out, -100.0, -40.0);
+			const FVector Drogue = Exit + FVector(0.0, -2400.0, -375.0);
+			FActorSpawnParameters SP;
+			SP.ObjectFlags |= RF_Transient;
+			ACineCameraActor* Cam = W->SpawnActor<ACineCameraActor>(Loc, (Drogue - Loc).Rotation(), SP);
+			if (!Cam) continue;
+#if WITH_EDITOR
+			Cam->SetActorLabel(Label);
+#endif
+			Cam->AttachToActor(HoseActor, FAttachmentTransformRules::KeepWorldTransform); // moves with the tanker
+			PC.Camera = Cam;
+			PC.bSpawned = true;
+		}
+		ConfigureCamera(PC.Camera.Get(), FocalMm(PC.Lens));
+		PodCameras.Add(PC);
+	}
+}
+
+UAirRefuelerAarsBridge::FPodCamera* UAirRefuelerAarsBridge::FindCamera(EAarsPod Pod)
+{
+	return PodCameras.FindByPredicate([Pod](const FPodCamera& C) { return C.Pod == Pod && C.Camera.IsValid(); });
+}
+
+void UAirRefuelerAarsBridge::SetupStream()
+{
+	UWorld* W = GetWorld();
+	if (!W || PodCameras.Num() == 0) return;
+
+	StreamTarget = NewObject<UTextureRenderTarget2D>(this, TEXT("PodCameraStream"));
+	StreamTarget->RenderTargetFormat = RTF_RGBA8;
+	StreamTarget->ClearColor = FLinearColor::Black;
+	StreamTarget->InitAutoFormat(StreamWidth, StreamHeight);
+	StreamTarget->UpdateResourceImmediate(true);
+
+	FActorSpawnParameters SP;
+	SP.ObjectFlags |= RF_Transient;
+	StreamCapture = W->SpawnActor<ASceneCapture2D>(FVector::ZeroVector, FRotator::ZeroRotator, SP);
+	if (!StreamCapture) return;
+#if WITH_EDITOR
+	StreamCapture->SetActorLabel(TEXT("PodCameraStreamCapture"));
+#endif
+	USceneCaptureComponent2D* C = StreamCapture->GetCaptureComponent2D();
+	C->TextureTarget = StreamTarget;
+	C->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR; // tonemapped, like the viewport
+	C->bCaptureEveryFrame = true;
+	C->bCaptureOnMovement = false;
+	C->bAlwaysPersistRenderingState = true; // keeps TSR/TAA history and eye adaptation between frames
+	// Measured 2026-11-26: with the same auto exposure the capture came out about 1 EV darker than the viewport.
+	C->PostProcessSettings.bOverride_AutoExposureBias = true;
+	C->PostProcessSettings.AutoExposureBias = 1.f;
+
+	StreamProducer = UE::PixelStreaming2::CreateVideoProducerRenderTarget(StreamTarget);
+	SelectCamera(FindCamera(SelectedPod) ? SelectedPod : PodCameras[0].Pod);
+}
+
+// Pixel Streaming creates its default streamer when PIE starts (after BeginPlay) and feeds it the PIE viewport.
+// Give it the pod camera render target instead, so the stream never shows the cockpit.
+void UAirRefuelerAarsBridge::FeedStreamer()
+{
+	if (!StreamProducer || !IPixelStreaming2Module::IsAvailable()) return;
+	IPixelStreaming2Module& M = IPixelStreaming2Module::Get();
+	TSharedPtr<IPixelStreaming2Streamer> S = M.FindStreamer(M.GetDefaultStreamerID());
+	if (!S.IsValid()) return;
+	if (S->GetVideoProducer().Pin() != StreamProducer)
+	{
+		S->SetVideoProducer(StreamProducer);
+		if (!bLoggedStreamer)
+		{
+			UE_LOG(LogTemp, Display, TEXT("AirRefueler: streamer '%s' now streams the pod camera (%s)"), *S->GetId(), PodName(SelectedPod));
+			bLoggedStreamer = true;
+		}
+	}
+}
+
+void UAirRefuelerAarsBridge::ReleaseStream()
+{
+	if (!StreamProducer) return;
+	if (IPixelStreaming2Module::IsAvailable())
+	{
+		IPixelStreaming2Module& M = IPixelStreaming2Module::Get();
+		TSharedPtr<IPixelStreaming2Streamer> S = M.FindStreamer(M.GetDefaultStreamerID());
+		if (S.IsValid() && S->GetVideoProducer().Pin() == StreamProducer) S->SetVideoProducer(nullptr);
+	}
+	FlushRenderingCommands(); // the producer reads the render target on the render thread
+	StreamProducer.Reset();
+}
+
+void UAirRefuelerAarsBridge::Deinitialize()
+{
+	ReleaseStream();
+	Super::Deinitialize();
+}
+
+void UAirRefuelerAarsBridge::SelectCamera(EAarsPod Pod)
+{
+	FPodCamera* Cam = FindCamera(Pod);
+	if (!Cam || !StreamCapture) return;
+	SelectedPod = Pod;
+	StreamCapture->AttachToActor(Cam->Camera.Get(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+	StreamCapture->GetCaptureComponent2D()->FOVAngle = HFovDeg(Cam->Lens);
+}
+
+void UAirRefuelerAarsBridge::HandleCameraSelect(const FAarsCameraSelect& M)
+{
+	SelectCamera(M.Pod);
+}
+
+void UAirRefuelerAarsBridge::HandleCameraLens(const FAarsCameraLens& M)
+{
+	SetLens(M.Pod, M.Lens);
+}
+
+void UAirRefuelerAarsBridge::SetLens(EAarsPod Pod, EAarsLens Lens)
+{
+	FPodCamera* C = FindCamera(Pod);
+	if (!C) return;
+	C->Lens = Lens;
+	C->Camera->GetCineCameraComponent()->SetCurrentFocalLength(FocalMm(Lens));
+	if (Pod == SelectedPod && StreamCapture) StreamCapture->GetCaptureComponent2D()->FOVAngle = HFovDeg(Lens);
+}
+
+void UAirRefuelerAarsBridge::PollKeys()
+{
+	APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	if (!PC) return;
+	if (PC->WasInputKeyJustPressed(EKeys::One)) SelectCamera(EAarsPod::Left);
+	if (PC->WasInputKeyJustPressed(EKeys::Two)) SelectCamera(EAarsPod::Right);
+	if (PC->WasInputKeyJustPressed(EKeys::N))
+	{
+		if (FPodCamera* C = FindCamera(SelectedPod)) SetLens(SelectedPod, C->Lens == EAarsLens::Wide ? EAarsLens::Narrow : EAarsLens::Wide);
+	}
+}
+
+UAirRefuelerAarsBridge* UAirRefuelerAarsBridge::FindRunning()
+{
+	if (!GEngine) return nullptr;
+	for (const FWorldContext& Ctx : GEngine->GetWorldContexts())
+	{
+		UWorld* W = Ctx.World();
+		if (W && (Ctx.WorldType == EWorldType::PIE || Ctx.WorldType == EWorldType::Game) && W->HasBegunPlay())
+		{
+			if (UAirRefuelerAarsBridge* B = W->GetSubsystem<UAirRefuelerAarsBridge>()) return B;
+		}
+	}
+	return nullptr;
+}
+
+namespace
+{
+	bool ParsePod(const FString& S, EAarsPod& Out)
+	{
+		if (S.StartsWith(TEXT("L"), ESearchCase::IgnoreCase)) { Out = EAarsPod::Left; return true; }
+		if (S.StartsWith(TEXT("R"), ESearchCase::IgnoreCase)) { Out = EAarsPod::Right; return true; }
+		return false;
+	}
+
+	FAutoConsoleCommand GAarsCameraCmd(
+		TEXT("aars.Camera"),
+		TEXT("Pod camera on the video stream, like camera.select: aars.Camera Left|Right"),
+		FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& Args)
+		{
+			UAirRefuelerAarsBridge* B = UAirRefuelerAarsBridge::FindRunning();
+			EAarsPod Pod;
+			if (B && Args.Num() >= 1 && ParsePod(Args[0], Pod)) B->SelectCamera(Pod);
+		}));
+
+	FAutoConsoleCommand GAarsLensCmd(
+		TEXT("aars.Lens"),
+		TEXT("Pod camera lens, like camera.lens: aars.Lens Left|Right Wide|Narrow"),
+		FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& Args)
+		{
+			UAirRefuelerAarsBridge* B = UAirRefuelerAarsBridge::FindRunning();
+			EAarsPod Pod;
+			if (!B || Args.Num() < 2 || !ParsePod(Args[0], Pod)) return;
+			B->SetLens(Pod, Args[1].StartsWith(TEXT("N"), ESearchCase::IgnoreCase) ? EAarsLens::Narrow : EAarsLens::Wide);
+		}));
 }

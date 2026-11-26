@@ -51,6 +51,10 @@
 		{
 			"Name": "AarsLink",
 			"Enabled": true
+		},
+		{
+			"Name": "PixelStreaming2",
+			"Enabled": true
 		}
 	]
 }

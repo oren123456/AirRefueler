@@ -6,6 +6,6 @@ public class AirRefueler : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "AarsLink", "Json" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "AarsLink", "Json", "CinematicCamera", "InputCore", "PixelStreaming2", "PixelStreaming2Core", "RenderCore" });
 	}
 }

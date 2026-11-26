@@ -21,7 +21,7 @@ namespace
 	const TCHAR* const ActionNames[] = { TEXT("APPROACH"), TEXT("ASTERN"), TEXT("CONTACT"), TEXT("DISCONNECT"), TEXT("BREAKAWAY"), TEXT("LEAVE") };
 	const TCHAR* const InboundNames[] = { TEXT("none"), TEXT("hello"), TEXT("ping"), TEXT("pod.hose"), TEXT("pod.fluid"), TEXT("boom.drive"), TEXT("boom.fluid"),
 		TEXT("camera.lens"), TEXT("clock.set"), TEXT("snapshot.request"), TEXT("world.set"), TEXT("world.resume"), TEXT("tanker.set"),
-		TEXT("receiver.add"), TEXT("receiver.command"), TEXT("receiver.remove") };
+		TEXT("receiver.add"), TEXT("receiver.command"), TEXT("receiver.remove"), TEXT("camera.select") };
 
 	template <typename E, int32 N>
 	const TCHAR* EnumName(E V, const TCHAR* const (&Names)[N])
@@ -504,6 +504,11 @@ bool AarsCodec::Parse(const FString& Text, FAarsInbound& Out, FString& Error)
 	{
 		if (!R.Enum(TEXT("pod"), Out.CameraLens.Pod, PodNames) || !R.Enum(TEXT("lens"), Out.CameraLens.Lens, LensNames)) return false;
 		Out.Type = EAarsInboundType::CameraLens;
+	}
+	else if (Type == TEXT("camera.select")) // proposed extension, not in contract 0.2
+	{
+		if (!R.Enum(TEXT("pod"), Out.CameraSelect.Pod, PodNames)) return false;
+		Out.Type = EAarsInboundType::CameraSelect;
 	}
 	else if (Type == TEXT("clock.set"))
 	{
