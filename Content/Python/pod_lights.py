@@ -2,7 +2,7 @@
 (actor origin = pod tail). Unlit emissive material M_PodLight (Color, Intensity) + 3 MIs. Re-runnable.
 Logic (BP graph): trailing/rewinding = red, READY or connected without flow = amber, fuel flowing = green, stowed = off."""
 import unreal
-SIM = "/Game/AirRefueler/Sim"; MATDIR = SIM + "/Materials"
+SIM = "/Game/AirRefueler/Sim"; MATDIR = "/Game/AirRefueler/Models/Drogue/Materials"
 eal = unreal.EditorAssetLibrary; at = unreal.AssetToolsHelpers.get_asset_tools(); mel = unreal.MaterialEditingLibrary
 sds = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem); SDL = unreal.SubobjectDataBlueprintFunctionLibrary
 log = lambda s: unreal.log("[PodLights] " + s)

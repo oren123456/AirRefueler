@@ -1,7 +1,7 @@
 """Hose look: black hose with light bands ~every metre (M_HoseStripes, procedural from the cable UV along its length,
 TileMaterial = number of bands), full gravity + more segments so the slack hangs in a smooth bow. Re-runnable."""
 import unreal
-SIM = "/Game/AirRefueler/Sim"; MATDIR = SIM + "/Materials"
+SIM = "/Game/AirRefueler/Sim"; MATDIR = "/Game/AirRefueler/Models/Drogue/Materials"
 eal = unreal.EditorAssetLibrary; at = unreal.AssetToolsHelpers.get_asset_tools(); mel = unreal.MaterialEditingLibrary
 sds = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem); SDL = unreal.SubobjectDataBlueprintFunctionLibrary
 log = lambda s: unreal.log("[HoseLook] " + s)

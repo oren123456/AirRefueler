@@ -3,7 +3,7 @@ OBJ = metres, Y-up, nose +Z, no .mtl. Logs mesh bounds to Saved/ClaudeShots/kc13
 import unreal, os, json
 at = unreal.AssetToolsHelpers.get_asset_tools(); eal = unreal.EditorAssetLibrary
 src = r"D:/GitHub/AirRefueler/Data/KC-135 Stratotanker"
-D = "/Game/AirRefueler/KC135"
+D = "/Game/AirRefueler/Models/Aircraft/KC135"
 out = {"tex": [], "mesh": {}}
 tasks = []
 for f in sorted(os.listdir(src)):

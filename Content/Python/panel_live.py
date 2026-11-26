@@ -4,7 +4,7 @@ panel, data from MPC_HUD) and PanelMask (glass / display-glow masks). Only MI_Sa
 is re-parented to it. Island centres / UV-per-cm bases come from panel_islands.py + atlas analysis. Re-runnable:
 on later runs only the Custom node code and parameters are updated (an in-use material must never be deleted)."""
 import unreal
-MAT = "/Game/AirRefueler/Materials"; SRC = MAT + "/M_MayaPBR"; DST = MAT + "/M_MayaPBR_Live"
+MAT = "/Game/AirRefueler/Models/Aircraft/Mirage/Materials"; SRC = "/Game/AirRefueler/Materials/M_MayaPBR"; DST = MAT + "/M_MayaPBR_Live"
 eal = unreal.EditorAssetLibrary; mel = unreal.MaterialEditingLibrary
 log = lambda s: unreal.log("[PanelLive] " + s)
 

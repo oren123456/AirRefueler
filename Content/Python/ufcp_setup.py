@@ -3,7 +3,7 @@
 (atlas px cols 2876..3024 = face bottom..top, rows 1134..1285 = pilot left..right). Re-runnable."""
 import unreal, os
 eal = unreal.EditorAssetLibrary; mel = unreal.MaterialEditingLibrary; at = unreal.AssetToolsHelpers.get_asset_tools()
-TEX = "/Game/AirRefueler/Textures"; MAT = "/Game/AirRefueler/Materials"; DST = MAT + "/M_MayaPBR_Live"
+TEX = "/Game/AirRefueler/Models/Aircraft/Mirage/Textures"; MAT = "/Game/AirRefueler/Models/Aircraft/Mirage/Materials"; DST = MAT + "/M_MayaPBR_Live"
 root = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 log = lambda s: unreal.log("[UFCP] " + s)
 tex = {}

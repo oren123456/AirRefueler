@@ -2,11 +2,11 @@
 material instances (BaseColorTex + NormalTex). argv 'orig' switches back to the original atlas."""
 import unreal, os, sys
 eal = unreal.EditorAssetLibrary; mel = unreal.MaterialEditingLibrary; at = unreal.AssetToolsHelpers.get_asset_tools()
-TEX = "/Game/AirRefueler/Textures"; MAT = "/Game/AirRefueler/Materials"
+TEX = "/Game/AirRefueler/Models/Aircraft/Mirage/Textures"; MAT = "/Game/AirRefueler/Models/Aircraft/Mirage/Materials"
 root = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 log = lambda s: unreal.log("[CockpitTex] " + s)
 if len(sys.argv) > 1 and sys.argv[1] == "orig":
-    base, nrm = eal.load_asset(TEX + "/T_Salon_Diffuse"), None
+    base, nrm = eal.load_asset("/Game/AirRefueler/Textures/T_Salon_Diffuse"), None
 else:
     for n in ("T_Salon_Diffuse_Mirage", "T_Salon_Normal_Mirage"):
         t = unreal.AssetImportTask(); t.filename = os.path.join(root, "Data", "Generated", n + ".png")

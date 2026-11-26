@@ -3,7 +3,7 @@ Mask = T_PanelLegend (front-panel white markings, Tools/panel_legend.py, atlas U
 T_UFCP_Mask.B (decal legends) inside it. Re-runnable."""
 import unreal, os
 eal = unreal.EditorAssetLibrary; mel = unreal.MaterialEditingLibrary; at = unreal.AssetToolsHelpers.get_asset_tools()
-TEX = "/Game/AirRefueler/Textures"; DST = "/Game/AirRefueler/Materials/M_MayaPBR_Live"
+TEX = "/Game/AirRefueler/Models/Aircraft/Mirage/Textures"; DST = "/Game/AirRefueler/Models/Aircraft/Mirage/Materials/M_MayaPBR_Live"
 root = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 log = lambda s: unreal.log("[Legends] " + s)
 t = unreal.AssetImportTask(); t.filename = os.path.join(root, "Data", "Generated", "T_PanelLegend.png")
@@ -46,7 +46,7 @@ mel.recompile_material(m); eal.save_loaded_asset(m)
 import sys
 glow = float(sys.argv[1]) if len(sys.argv) > 1 else 40.0
 for mi_name in ("MI_Salon_VRay1", "MI_Salon_VRay1_Cutout"):
-    mi = eal.load_asset("/Game/AirRefueler/Materials/" + mi_name)
+    mi = eal.load_asset("/Game/AirRefueler/Models/Aircraft/Mirage/Materials/" + mi_name)
     mel.set_material_instance_scalar_parameter_value(mi, "LegendGlow", glow); mel.update_material_instance(mi); eal.save_loaded_asset(mi)
 log("LegendGlow %.0f" % glow)
 log("done")

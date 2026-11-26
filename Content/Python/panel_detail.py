@@ -3,7 +3,7 @@ fingerprints, subtle tone mottling, glossy display glass; all procedural in atla
 faded with screen footprint so it never shimmers. Also re-parents MI_Salon_VRay1 (rest of the cockpit) to the
 live material. Re-runnable: updates the Custom node code in place."""
 import unreal
-MAT = "/Game/AirRefueler/Materials"; DST = MAT + "/M_MayaPBR_Live"
+MAT = "/Game/AirRefueler/Models/Aircraft/Mirage/Materials"; DST = MAT + "/M_MayaPBR_Live"
 eal = unreal.EditorAssetLibrary; mel = unreal.MaterialEditingLibrary
 log = lambda s: unreal.log("[PanelDetail] " + s)
 DETAIL = r"""

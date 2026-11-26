@@ -2,7 +2,7 @@
 argv: optional 'map' JSON override, e.g. {"0":"cockpit"}. Re-runnable."""
 import unreal, json, sys
 eal = unreal.EditorAssetLibrary; mel = unreal.MaterialEditingLibrary; at = unreal.AssetToolsHelpers.get_asset_tools()
-D = "/Game/AirRefueler/KC135"; TX = D + "/Textures/T_KC135_"
+D = "/Game/AirRefueler/Models/Aircraft/KC135"; TX = D + "/Textures/T_KC135_"
 log = lambda s: unreal.log("[KC135] " + s)
 MAP = {"0": "cockpit", "1": "fuz", "2": "wings", "3": "wings", "4": "int", "5": "Dashboard", "6": "Detail", "7": "glass"}
 if len(sys.argv) > 1: MAP.update(json.loads(sys.argv[1]))
