@@ -1,10 +1,10 @@
-"""KC-135 materials + BP_KC135 (8 parts, built at x100, roll 90: OBJ Y-up/nose +Z -> UE Z-up/nose +Y) + preview actor.
+"""KC-135 materials + BP_KC135 (7 parts (no gear), built at x100, roll 90: OBJ Y-up/nose +Z -> UE Z-up/nose +Y) + preview actor.
 argv: optional 'map' JSON override, e.g. {"0":"cockpit"}. Re-runnable."""
 import unreal, json, sys
 eal = unreal.EditorAssetLibrary; mel = unreal.MaterialEditingLibrary; at = unreal.AssetToolsHelpers.get_asset_tools()
 D = "/Game/AirRefueler/Models/Aircraft/KC135"; TX = D + "/Textures/T_KC135_"
 log = lambda s: unreal.log("[KC135] " + s)
-MAP = {"0": "cockpit", "1": "fuz", "2": "wings", "3": "wings", "4": "int", "5": "Dashboard", "6": "Detail", "7": "glass"}
+MAP = {"0": "cockpit", "1": "fuz", "2": "wings", "4": "int", "5": "Dashboard", "6": "Detail", "7": "glass"}
 if len(sys.argv) > 1: MAP.update(json.loads(sys.argv[1]))
 def master(name, glass):
     p = D + "/Materials/" + name
@@ -68,8 +68,8 @@ bp = eal.load_asset(bp_path)
 sds = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem); L = unreal.SubobjectDataBlueprintFunctionLibrary
 handles = sds.k2_gather_subobject_data_for_blueprint(bp)
 have = {str(L.get_variable_name(L.get_data(h))): h for h in handles}
-# model_3 = the left main-gear wheels missing from model_2 (mirror of the right set, <2 cm): uses the wings/gear set
-SKIP = set()
+# model_3 (left main wheels) dropped: landing gear removed, see kc135_nogear.py
+SKIP = {3}
 for i in range(8):
     if i in SKIP: continue
     n = "Part%d" % i
